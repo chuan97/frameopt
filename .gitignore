@@ -1,0 +1,16 @@
+# VS Code settings
+.vscode/
+
+# Bytecode and metadata
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.log
+
+# Hatch / build
+dist/
+build/
+
+# Conda / virtualenv
+.venv/
+.env/
