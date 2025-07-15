@@ -17,14 +17,6 @@ dependencies = [
 ]
 license = { text = "Apache-2.0" }
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
-    "ruff",
-    "mypy",
-]
-
 [tool.black]
 line-length = 88
 target-version = ["py311"]
@@ -40,7 +32,12 @@ python_version = "3.11"
 strict = true
 
 [tool.hatch.envs.default]
-dependencies = ["pytest"]
+dependencies = [
+    "pytest",
+    "black",
+    "ruff",
+    "mypy",
+]
 post-install = "python -m pip install -e .[dev]"
 
 [tool.hatch.envs.default.scripts]
