@@ -4,4 +4,4 @@ Evolutionary optimisation tools for Grassmannian and projective frame constructi
 
 This is the repository scaffold created on 2025-07-15.
 
-![CI](https://github.com/your-username/evomof/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/chuan97/evomof/actions/workflows/ci.yml/badge.svg)
