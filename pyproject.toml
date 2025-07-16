@@ -43,4 +43,5 @@ post-install = "python -m pip install -e .[dev]"
 [tool.hatch.envs.default.scripts]
 lint = "ruff check src tests && black --check src tests"
 test = "pytest -q"
+mypy = "mypy -p evomof"
 
