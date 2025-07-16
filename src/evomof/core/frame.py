@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from typing import Final, Tuple
 
 import numpy as np
-from numpy.typing import NDArray
+
+from evomof.core._types import Complex128Array, Float64Array
 
 __all__: Final = ["Frame"]
 
@@ -99,17 +100,28 @@ class Frame:
         return self.vectors.shape
 
     @property
-    def gram(self) -> NDArray[np.complex128]:
+    def gram(self) -> Complex128Array:
         """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
         g = self.vectors @ self.vectors.conj().T
-        return typing.cast(NDArray[np.complex128], g)
+        return typing.cast(Complex128Array, g)
 
-    def chordal_distances(self) -> NDArray[np.float64]:
-        """Pairwise chordal distances between rows (zero on the diagonal)."""
+    def chordal_distances(self) -> Float64Array:
+        """
+        Pair‑wise **chordal distances** between frame vectors.
+
+        We define the chordal distance via the overlap magnitude
+        :math:`x = |\\langle f_i, f_j \\rangle|` as
+
+        .. math::
+
+            D(x) \;=\; 2 \\sqrt{1 - x^{2}}.
+
+        The returned array has shape ``(n, n)`` with zeros on the diagonal.
+        """
         g = np.abs(self.gram) ** 2
         np.fill_diagonal(g, 1.0)
-        dist = np.sqrt(2.0 - 2.0 * np.sqrt(g))
-        return typing.cast(NDArray[np.float64], dist)
+        dist = 2 * np.sqrt(np.maximum(1.0 - g, 0.0))
+        return typing.cast(Float64Array, dist)
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})               #
@@ -174,7 +186,7 @@ class Frame:
         new_vecs = scale_cos * self.vectors + scale_sin * tang
         return Frame.from_array(new_vecs, copy=False)
 
-    def log_map(self, other: "Frame") -> NDArray[np.complex128]:
+    def log_map(self, other: "Frame") -> Complex128Array:
         """
         Compute the exact Riemannian logarithmic map on the product sphere.
 
@@ -220,7 +232,7 @@ class Frame:
 
         diff = other.vectors - inner[:, None] * self.vectors
         tang = scale[:, None] * diff
-        return typing.cast(NDArray[np.complex128], tang.astype(np.complex128))
+        return typing.cast(Complex128Array, tang.astype(np.complex128))
 
     # -------------------------------------------------------------- #
     # Private helpers                                               #
