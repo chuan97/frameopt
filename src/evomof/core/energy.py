@@ -15,7 +15,7 @@ import typing
 
 import numpy as np
 
-from evomof.core._types import Float64Array
+from evomof.core._types import Complex128Array, Float64Array
 
 from .frame import Frame
 
@@ -115,3 +115,103 @@ def riesz_energy(frame: Frame, s: float = 2.0, eps: float = 1e-12) -> float:
 
     energy_half = np.sum(dist_sub ** (-s))
     return float(2.0 * energy_half)
+
+
+def _project_tangent(frame: Frame, arr: Complex128Array) -> Complex128Array:
+    """Orthogonalise *arr* row-wise so Re⟨f_i,ξ_i⟩ = 0."""
+    radial = np.real(np.sum(arr.conj() * frame.vectors, axis=1, keepdims=True))
+    return typing.cast(Complex128Array, arr - radial * frame.vectors)
+
+
+def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
+    """
+    Analytic Riemannian gradient of the *p*-frame potential.
+
+    Parameters
+    ----------
+    frame :
+        The current frame :math:`F \\in (S^{2d-1})^{n}`.
+    p :
+        Positive exponent in the potential
+        :math:`\\Phi_p(F) = \\sum_{i\\neq j} |\\langle f_i,f_j\\rangle|^p`.
+
+    Returns
+    -------
+    Complex128Array
+        Tangent array of shape ``frame.shape`` satisfying
+        :math:`\\operatorname{Re}\\langle f_i,\\xi_i\\rangle = 0` for every row.
+    """
+    g = frame.gram  # (n, n) complex
+    abs_p2 = np.abs(g) ** (p - 2)
+    coeff = p * abs_p2 * g
+    grad = (
+        coeff @ frame.vectors
+        - (abs_p2 * np.abs(g) ** 2).sum(axis=1, keepdims=True) * frame.vectors
+    )
+    return _project_tangent(frame, grad)
+
+
+def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
+    """
+    Gradient of the differentiable coherence surrogate
+    :math:`(\\Phi_p(F))^{1/p}`.
+
+    Parameters
+    ----------
+    frame :
+        Input frame.
+    p :
+        Same exponent used in :func:`diff_coherence`.  Large *p* makes the
+        surrogate approach the true max‑coherence while remaining smooth.
+
+    Returns
+    -------
+    Complex128Array
+        Tangent gradient array with the same shape as the frame.
+    """
+    phi_p = frame_potential(frame, p)
+    if phi_p == 0.0:
+        return np.zeros_like(frame.vectors)
+    scaled = (phi_p ** (1.0 / p - 1)) * grad_frame_potential(frame, p)
+    return typing.cast(Complex128Array, scaled)
+
+
+def grad_riesz_energy(
+    frame: Frame, s: float = 2.0, eps: float = 1e-12
+) -> Complex128Array:
+    """
+    Analytic gradient of the Riesz *s*-energy on the product sphere.
+
+    For each unordered pair ``(i,j)`` the contribution is
+
+    .. math::
+
+        -\\frac{s}{\\|f_i - f_j\\|^{s+2}}\\,(f_i - f_j),
+
+    projected onto the tangent space.
+
+    Parameters
+    ----------
+    frame :
+        Input frame.
+    s :
+        Positive Riesz exponent.
+    eps :
+        Clamp for very small chordal distances to avoid overflow
+        (must match the value used in :func:`riesz_energy`).
+
+    Returns
+    -------
+    Complex128Array
+        Tangent gradient array.
+    """
+    dist = frame.chordal_distances()
+    i, j = np.triu_indices_from(dist, k=1)
+    dist_sub = np.maximum(dist[i, j], eps)
+    coeff = -s / (dist_sub ** (s + 2))
+    grad = np.zeros_like(frame.vectors)
+    for idx_k, idx_j, c in zip(i, j, coeff, strict=False):
+        diff = frame.vectors[idx_k] - frame.vectors[idx_j]
+        grad[idx_k] += c * diff
+        grad[idx_j] -= c * diff
+    return _project_tangent(frame, grad)

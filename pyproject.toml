@@ -13,7 +13,8 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0.0",
     "scipy>=1.13.0",
-    "cma>=3.2.0"
+    "cma>=3.2.0",
+    "pymanopt>=0.4",
 ]
 license = { text = "Apache-2.0" }
 
@@ -33,6 +34,14 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = "cma.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pymanopt"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pymanopt.*"
 ignore_missing_imports = true
 
 [tool.hatch.envs.default]
