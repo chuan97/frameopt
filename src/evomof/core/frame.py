@@ -1,10 +1,12 @@
 # src/evomof/core/frame.py
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass
 from typing import Final, Tuple
 
 import numpy as np
+from numpy.typing import NDArray
 
 __all__: Final = ["Frame"]
 
@@ -17,6 +19,19 @@ class Frame:
     The first non-zero component of every vector is made real-positive to
     quotient out the irrelevant global U(1) phase.
     """
+
+    # ------------------------------------------------------------------ #
+    # Dataclass validation                                               #
+    # ------------------------------------------------------------------ #
+
+    def __post_init__(self) -> None:
+        """Ensure internal array is complex128 and 2‑D (n, d)."""
+        if self.vectors.ndim != 2:
+            raise ValueError("Frame.vectors must be 2‑D (n, d)")
+        # Promote to complex128 if necessary (no copy when already correct)
+        if not np.iscomplexobj(self.vectors) or self.vectors.dtype != np.complex128:
+            self.vectors = self.vectors.astype(np.complex128, copy=False)
+        # We rely on normalisation/phase fix elsewhere; don't enforce here
 
     vectors: np.ndarray  # shape (n, d), complex128/complex64
 
@@ -46,7 +61,31 @@ class Frame:
         d: int,
         rng: np.random.Generator | None = None,
     ) -> "Frame":
-        """Haar-uniform random frame on the unit sphere."""
+        """
+        Return a frame whose rows are sampled uniformly from the unit sphere
+        ``S^{2d-1}`` and then gauge‑fixed.
+
+        Uniformity is achieved by normalising i.i.d. complex‑Gaussian vectors,
+        which is equivalent to taking the first column of a Haar‑random
+        unitary.  The subsequent phase fix (first non‑zero entry real‑positive)
+        chooses one representative per projective equivalence class and does
+        **not** bias the distribution.
+
+        Parameters
+        ----------
+        n :
+            Number of vectors (rows).
+        d :
+            Ambient complex dimension.
+        rng :
+            Optional :class:`numpy.random.Generator` for reproducibility.  If
+            *None*, a fresh default generator is used.
+
+        Returns
+        -------
+        Frame
+            A new random frame with shape ``(n, d)``.
+        """
         rng = rng or np.random.default_rng()
         z = rng.standard_normal((n, d)) + 1j * rng.standard_normal((n, d))
         return cls.from_array(z, copy=False)
@@ -60,15 +99,17 @@ class Frame:
         return self.vectors.shape
 
     @property
-    def gram(self) -> np.ndarray:
-        """`(n, n)` matrix of inner-products 〈f_i, f_j〉."""
-        return self.vectors @ self.vectors.conj().T
+    def gram(self) -> NDArray[np.complex128]:
+        """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
+        g = self.vectors @ self.vectors.conj().T
+        return typing.cast(NDArray[np.complex128], g)
 
-    def chordal_distances(self) -> np.ndarray:
-        """Pairwise chordal distances ∥f_i − f_j∥₂ between *rows*."""
+    def chordal_distances(self) -> NDArray[np.float64]:
+        """Pairwise chordal distances between rows (zero on the diagonal)."""
         g = np.abs(self.gram) ** 2
         np.fill_diagonal(g, 1.0)
-        return np.sqrt(2.0 - 2.0 * np.sqrt(g))
+        dist = np.sqrt(2.0 - 2.0 * np.sqrt(g))
+        return typing.cast(NDArray[np.float64], dist)
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})               #
@@ -76,9 +117,43 @@ class Frame:
 
     def retract(self, tang: np.ndarray) -> "Frame":
         """
-        Exact exponential-map retraction (sphere geodesic).
+        Exact exponential-map retraction (per‑row great‑circle step).
 
-        `tang` must be tangent:  Re⟨f_i, t_i⟩ = 0  for every row.
+        Given a base frame ``self`` and a tangent perturbation ``tang`` lying
+        in the product tangent space
+        :math:`T_{\\text{self}}(S^{2d-1})^{n}`, this method returns a *new*
+        :class:`Frame` whose rows are obtained by moving along the geodesic
+        starting at each original vector:
+
+        .. math::
+
+            f_i' \;=\; \cos\\lVert\\xi_i\\rVert \, f_i \;+\;
+                     \\frac{\\sin\\lVert\\xi_i\\rVert}{\\lVert\\xi_i\\rVert}\,
+                     \\xi_i,
+
+        where :math:`\\xi_i` is the *i*-th row of ``tang``.  For
+        :math:`\\lVert\\xi_i\\rVert \\to 0` the Taylor expansion reduces to the
+        familiar first‑order update ``f_i + xi_i`` followed by re‑normalisation.
+
+        Parameters
+        ----------
+        tang :
+            Complex array of shape ``self.shape`` representing a tangent vector
+            field.  It **must** satisfy
+            :math:`\\operatorname{Re}\\langle f_i, \\xi_i \\rangle = 0`
+            for every row, i.e. it lies in the orthogonal complement of each
+            original vector.
+
+        Returns
+        -------
+        Frame
+            A new frame with the same shape as ``self`` whose rows remain
+            unit‑norm and have the same fixed global phase convention.
+
+        Raises
+        ------
+        ValueError
+            If the shape of ``tang`` is different from that of the base frame.
         """
         if tang.shape != self.shape:
             raise ValueError("Tangent array shape mismatch.")
@@ -99,7 +174,38 @@ class Frame:
         new_vecs = scale_cos * self.vectors + scale_sin * tang
         return Frame.from_array(new_vecs, copy=False)
 
-    def log_map(self, other: "Frame") -> np.ndarray:
+    def log_map(self, other: "Frame") -> NDArray[np.complex128]:
+        """
+        Compute the exact Riemannian logarithmic map on the product sphere.
+
+        Given two frames with identical shape, this returns a tangent array
+        ``xi`` such that::
+
+            self.retract(xi) == other      (up to numerical precision)
+
+        Each row‐pair ``(f_i, g_i)`` is treated independently:
+
+        * θ = arccos Re⟨f_i, g_i⟩  is the great‑circle distance.
+        * xi_i = (θ / sin θ) · (g_i − cos θ · f_i)
+
+        The result lives in the tangent space ``T_self M`` and satisfies
+        ``Re⟨f_i, xi_i⟩ = 0`` for every i.
+
+        Parameters
+        ----------
+        other :
+            Target frame with the same ``(n, d)`` shape.
+
+        Returns
+        -------
+        np.ndarray
+            Tangent array of shape ``self.shape`` (complex128).
+
+        Raises
+        ------
+        ValueError
+            If ``other`` does not have the same shape as ``self``.
+        """
         if self.shape != other.shape:
             raise ValueError("Frame shapes mismatch")
 
@@ -114,14 +220,23 @@ class Frame:
 
         diff = other.vectors - inner[:, None] * self.vectors
         tang = scale[:, None] * diff
-        return tang.astype(np.complex128)
+        return typing.cast(NDArray[np.complex128], tang.astype(np.complex128))
 
     # -------------------------------------------------------------- #
     # Private helpers                                               #
     # -------------------------------------------------------------- #
 
     def _renormalise(self) -> None:
-        """Unit-normalise rows and fix first non-zero component’s phase."""
+        """
+        In‑place normalisation and gauge fix.
+
+        * Each row is scaled to unit L2 norm.
+        * The global U(1) phase is removed by rotating every vector so that
+          its first non‑zero component becomes real‑positive.
+
+        Idempotent: calling this method multiple times leaves ``vectors``
+        unchanged.
+        """
         norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
         self.vectors /= norms
 
@@ -132,7 +247,7 @@ class Frame:
                 vec *= np.exp(-1j * phase)
 
     # ------------------------------------------------------------------ #
-    # Dunder methods for convenience                                     #
+    # Convenience & dunder methods                                       #
     # ------------------------------------------------------------------ #
 
     def copy(self) -> "Frame":
