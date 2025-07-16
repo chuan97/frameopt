@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from functools import partial
+from typing import Any
 
 import numpy as np
 
@@ -28,9 +30,15 @@ class ProjectionCMA:
         sigma0: float = 0.2,
         popsize: int | None = None,
         rng: int | np.random.Generator | None = None,
-        energy_fn: Callable[[Frame], float] = diff_coherence,
-        p: float = 16.0,
-    ):
+        *,
+        energy_fn: Callable[..., float] = diff_coherence,
+        energy_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        energy_kwargs :
+            Extra keyword arguments forwarded to *energy_fn* via
+            :pyfunc:`functools.partial`.
+        """
         self.n, self.d = n, d
 
         # Convert int seed to Generator for mypy compatibility
@@ -38,15 +46,10 @@ class ProjectionCMA:
             rng = np.random.default_rng(rng)
         rng_gen: np.random.Generator | None = rng
 
-        # Wrap diff_coherence so signature matches Callable[[Frame], float]
-        if energy_fn is diff_coherence:
-
-            def _wrapped(f: Frame, *, _p: float = p) -> float:  # noqa: D401
-                return diff_coherence(f, _p)
-
-            self.energy_fn: Callable[[Frame], float] = _wrapped
-        else:
-            self.energy_fn = energy_fn
+        # Final energy callable expects exactly one Frame positional arg.
+        self.energy_fn: Callable[[Frame], float] = partial(
+            energy_fn, **(energy_kwargs or {})
+        )
 
         mean = Frame.random(n, d, rng=rng_gen)
         self._es = cmaes.CMAEvolutionStrategy(
@@ -63,7 +66,7 @@ class ProjectionCMA:
         --------
         1. Ask pycma for a batch of candidate vectors (ambient ℝ).
         2. Reshape each into a :class:`Frame`, then project back onto the
-           unit‑norm manifold via :pymeth:`Frame.normalize`.
+           unit‑norm manifold via :pymeth:`Frame.renormalise`.
         3. Evaluate the energy function on each projected frame.
         4. Tell pycma the fitness values to update its internal state.
         5. Return the best projected frame of this generation and its energy.
