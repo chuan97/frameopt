@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import Final, Tuple
+from typing import Final, Iterator, Tuple
 
 import numpy as np
 
@@ -265,7 +265,7 @@ class Frame:
     def copy(self) -> "Frame":
         return Frame.from_array(self.vectors, copy=True)
 
-    def __iter__(self):  # type: ignore [return-value]
+    def __iter__(self) -> Iterator[Complex128Array]:
         return iter(self.vectors)
 
     def __repr__(self) -> str:  # pragma: no cover
