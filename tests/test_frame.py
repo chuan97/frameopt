@@ -28,3 +28,19 @@ def test_log_retract_inverse():
     ξ = f1.log_map(f2)
     f3 = f1.retract(ξ)
     np.testing.assert_allclose(f2.vectors, f3.vectors, atol=1e-8, rtol=0)
+
+
+def test_log_retract_large_angle():
+    f1 = Frame.random(10, 5, rng=np.random.default_rng(4))
+
+    # Build a deterministic tangent: swap real/imag, project, normalise.
+    swaps = 1j * f1.vectors  # swap real<->imag parts; certainly not collinear
+    swaps -= np.einsum("nd,nd->n", swaps.conj(), f1.vectors)[:, None] * f1.vectors
+    tang = swaps / np.linalg.norm(swaps, axis=1, keepdims=True)
+    tang *= 1.0  # 1-radian step
+
+    f2 = f1.retract(tang)
+    xi = f1.log_map(f2)
+    f3 = f1.retract(xi)
+
+    np.testing.assert_allclose(f2.vectors, f3.vectors, atol=1e-8, rtol=0)
