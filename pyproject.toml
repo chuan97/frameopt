@@ -31,6 +31,10 @@ select = ["E", "F", "I", "B"]
 python_version = "3.11"
 strict = true
 
+[[tool.mypy.overrides]]
+module = "cma.*"
+ignore_missing_imports = true
+
 [tool.hatch.envs.default]
 dependencies = [
     "pytest",

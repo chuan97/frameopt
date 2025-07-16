@@ -52,7 +52,7 @@ class Frame:
 
         vecs = arr.copy() if copy else arr
         frame = cls(vecs.astype(np.complex128, copy=False))
-        frame._renormalise()
+        frame.renormalise()
         return frame
 
     @classmethod
@@ -238,7 +238,7 @@ class Frame:
     # Private helpers                                               #
     # -------------------------------------------------------------- #
 
-    def _renormalise(self) -> None:
+    def renormalise(self) -> None:
         """
         In‑place normalisation and gauge fix.
 
