@@ -33,7 +33,7 @@ jobs:
         run: hatch run lint
 
       - name: Type-check
-        run: hatch run mypy
+        run: hatch run typecheck
 
       - name: Run tests
         run: hatch run test
