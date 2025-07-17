@@ -57,4 +57,5 @@ post-install = "python -m pip install -e .[dev]"
 lint = "ruff check src tests && black --check src tests"
 test = "pytest -q"
 typecheck = "mypy -p evomof"
+bench = "python bench/quick_benchmark.py"
 
