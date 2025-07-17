@@ -105,6 +105,26 @@ class Frame:
         g = self.vectors @ self.vectors.conj().T
         return typing.cast(Complex128Array, g)
 
+    def renormalise(self) -> None:
+        """
+        In‑place normalisation and gauge fix.
+
+        * Each row is scaled to unit L2 norm.
+        * The global U(1) phase is removed by rotating every vector so that
+            its first non‑zero component becomes real‑positive.
+
+        Idempotent: calling this method multiple times leaves ``vectors``
+        unchanged.
+        """
+        norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
+        self.vectors /= norms
+
+        for vec in self.vectors:
+            nz = np.flatnonzero(vec)
+            if nz.size:
+                phase = np.angle(vec[nz[0]])
+                vec *= np.exp(-1j * phase)
+
     def chordal_distances(self) -> Float64Array:
         """
         Pair‑wise **chordal distances** between frame vectors.
@@ -122,6 +142,33 @@ class Frame:
         np.fill_diagonal(g, 1.0)
         dist = 2 * np.sqrt(np.maximum(1.0 - g, 0.0))
         return typing.cast(Float64Array, dist)
+
+    # ------------------------------------------------------------------ #
+    # Tangent‑space helper                                               #
+    # ------------------------------------------------------------------ #
+    def project(self, arr: np.ndarray) -> Complex128Array:
+        """
+        Orthogonally project an ambient array onto the tangent space
+        at this frame.
+
+        For each row ``i`` the projection subtracts the real part of the
+        inner product with the base vector so that the result satisfies
+
+        ``Re⟨f_i, ξ_i⟩ = 0``.
+
+        Parameters
+        ----------
+        arr :
+            Complex array of shape ``self.shape``.  It does **not** need to
+            be tangent already.
+
+        Returns
+        -------
+        Complex128Array
+            Tangent array of the same shape as the frame.
+        """
+        radial = np.real(np.sum(arr.conj() * self.vectors, axis=1, keepdims=True))
+        return typing.cast(Complex128Array, arr - radial * self.vectors)
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})               #
@@ -233,30 +280,6 @@ class Frame:
         diff = other.vectors - inner[:, None] * self.vectors
         tang = scale[:, None] * diff
         return typing.cast(Complex128Array, tang.astype(np.complex128))
-
-    # -------------------------------------------------------------- #
-    # Private helpers                                               #
-    # -------------------------------------------------------------- #
-
-    def renormalise(self) -> None:
-        """
-        In‑place normalisation and gauge fix.
-
-        * Each row is scaled to unit L2 norm.
-        * The global U(1) phase is removed by rotating every vector so that
-          its first non‑zero component becomes real‑positive.
-
-        Idempotent: calling this method multiple times leaves ``vectors``
-        unchanged.
-        """
-        norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
-        self.vectors /= norms
-
-        for vec in self.vectors:
-            nz = np.flatnonzero(vec)
-            if nz.size:
-                phase = np.angle(vec[nz[0]])
-                vec *= np.exp(-1j * phase)
 
     # ------------------------------------------------------------------ #
     # Convenience & dunder methods                                       #

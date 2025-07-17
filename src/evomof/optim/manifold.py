@@ -9,18 +9,32 @@ from evomof.core.frame import Frame
 
 
 class FrameManifold(Manifold):  # type: ignore[misc]
-    """Product of unit spheres represented by our Frame object."""
+    r"""
+    Product manifold :math:`\mathcal M = (S^{2d-1})^{\times n}` of *n*
+    complex unit spheres, where each point is represented by an
+    :class:`~evomof.core.frame.Frame` whose rows have unit ℓ₂‑norm.
+
+    * **Metric** – real part of the Frobenius inner product
+      :math:`\langle U,V\rangle_X = \operatorname{Re}\,\mathrm{tr}(U^\dagger V)`.
+    * **Dimension** – :math:`\dim\mathcal M = 2nd - 2n`.
+
+    The manifold provides the minimal interface required by **Pymanopt**
+    (random point, projection, retraction, log/exp, transport, …) so that
+    generic Riemannian optimisers can operate directly on
+    :class:`~evomof.core.frame.Frame` objects.
+    """
 
     def __init__(self, n: int, d: int):
+        if n <= 0 or d <= 0:
+            raise ValueError("Both n and d must be positive integers.")
         self._n, self._d = n, d
-        real_dim = 2 * n * d - 2 * n
-        # Pass both keyword arguments to satisfy any Manifold signature variant
-        super().__init__(dimension=real_dim, name="FrameManifold")
+        self._dim: int = 2 * n * d - 2 * n
+        super().__init__(dimension=self._dim, name="FrameManifold")
 
     @property
     def dimension(self) -> int:
         """Real dimension of the manifold (number of free parameters)."""
-        return 2 * self._n * self._d - 2 * self._n
+        return self._dim
 
     # -- basic ops -------------------------------------------------------
     def random_point(self, rng: np.random.Generator | None = None) -> Frame:
@@ -42,36 +56,65 @@ class FrameManifold(Manifold):  # type: ignore[misc]
 
     def projection(self, X: Frame, U: np.ndarray) -> Complex128Array:
         """
-        Project an ambient perturbation onto the tangent space T_X𝓜.
+        Orthogonally project an ambient perturbation onto the tangent
+        space :math:`T_X\mathcal M`.
 
-        Computes ``U − Re⟨f_i,U_i⟩ f_i`` row‑wise so the result is
-        orthogonal to each reference vector.
+        Parameters
+        ----------
+        X :
+            Base frame at which the projection is taken.
+        U :
+            Ambient array of shape ``X.shape``.
 
         Returns
         -------
         Complex128Array
-            Tangent array with the same shape as ``U``.
+            Tangent array orthogonal to every row of *X*.
         """
-        radial = np.real(np.sum(U.conj() * X.vectors, axis=1, keepdims=True))
-        projected = U - radial * X.vectors
-        return typing.cast(Complex128Array, projected)
+        return X.project(U)
 
     def exp(self, X: Frame, U: np.ndarray) -> Frame:
         """
-        Riemannian exponential map based on exact sphere geodesic.
+        Exact exponential map on the product sphere.
 
-        Equivalent to :pymeth:`Frame.retract`.
+        For each row the update is
+        :math:`f \;\mapsto\; \cos\|u\|\,f + \sin\|u\|\,\tfrac{u}{\|u\|}`,
+        which is implemented by :pymeth:`Frame.retract`.
+
+        Parameters
+        ----------
+        X :
+            Base frame.
+        U :
+            Tangent perturbation at *X*.
 
         Returns
         -------
         Frame
-            New frame reached by moving along the geodesic with initial
-            velocity ``U`` for unit time.
+            Point reached by following the geodesic emanating from ``X``
+            with initial velocity ``U`` for unit time.
         """
         return X.retract(U)
 
     def retraction(self, X: Frame, U: np.ndarray) -> Frame:
-        return self.exp(X, U)
+        """
+        Cheaper first‑order retraction: renormalise rows directly.
+
+        Parameters
+        ----------
+        X :
+            Base frame.
+        U :
+            Tangent perturbation at *X*.
+
+        Returns
+        -------
+        Frame
+            Retracted frame lying back on the manifold.
+        """
+        new_vecs = X.vectors + U
+        # Normalise each row and fix global phase
+        return Frame.from_array(new_vecs, copy=False)
 
     def log(self, X: Frame, Y: Frame) -> Complex128Array:
         """
@@ -85,7 +128,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         Complex128Array
-            Tangent vector at ``X`` that reaches ``Y`` via ``exp``.
+            Tangent vector (same shape as the frames) in :math:`T_X\mathcal M`.
         """
         return X.log_map(Y)
 
@@ -102,17 +145,14 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         """
         return float(np.real(np.sum(U.conj() * V)))
 
-    # ---- zero vector ---------------------------------------------------
     def zero_vector(self, X: Frame) -> Complex128Array:
         """Return the zero element of T_X𝓜."""
         return typing.cast(Complex128Array, np.zeros_like(X.vectors))
 
-    # ---- norm ----------------------------------------------------------
     def norm(self, X: Frame, U: np.ndarray) -> float:
         """Riemannian norm induced by the inner product."""
         return float(np.sqrt(self.inner_product(X, U, U)))
 
-    # ---- random tangent -----------------------------------------------
     def random_tangent_vector(
         self, X: Frame, rng: np.random.Generator | None = None
     ) -> Complex128Array:
@@ -130,20 +170,30 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         tangent /= npl.norm(tangent)  # normalise
         return tangent
 
-    # ---- vector transport ---------------------------------------------
-    def transport(
-        self, X: Frame, Y: Frame, U: np.ndarray
-    ) -> Complex128Array:  # noqa: D401
+    def transport(self, X: Frame, Y: Frame, U: np.ndarray) -> Complex128Array:
         """
-        Transport tangent vector ``U`` at ``X`` to the tangent space at ``Y``.
+        Parallel–transport a tangent vector from ``X`` to ``Y``.
 
-        For the product‑sphere manifold, parallel transport followed by
-        projection reduces to simply projecting the same ambient vector
-        onto ``T_Y𝓜``.
+        For each row we use the exact formula on the unit 2‑sphere
+        (complex version):
+
+        .. math::
+
+            \operatorname{PT}_{X\to Y}(U)
+            = U -
+              \frac{\langle Y,U\rangle}{1 + \langle X,Y\rangle}\,(X + Y).
+
+        The result lives in :math:`T_Y\mathcal M`.  A final projection is
+        applied for numerical safety.
         """
-        return self.projection(Y, U)
+        # Inner products row‑wise (complex)
+        dot_yu = np.sum(Y.vectors.conj() * U, axis=1, keepdims=True)  # ⟨Y,U⟩
+        dot_xy = np.sum(X.vectors.conj() * Y.vectors, axis=1, keepdims=True)  # ⟨X,Y⟩
+        factor = dot_yu / (1.0 + dot_xy)
 
-    # ---- distance ------------------------------------------------------
+        transported = U - factor * (X.vectors + Y.vectors)
+        return self.projection(Y, transported)
+
     def dist(self, X: Frame, Y: Frame) -> float:
         """
         Geodesic distance induced by the 2‑norm on the product sphere.
@@ -153,3 +203,6 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         """
         xi = X.log_map(Y)
         return float(np.linalg.norm(xi))
+
+
+__all__: list[str] = ["FrameManifold"]

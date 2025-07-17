@@ -44,3 +44,21 @@ def test_log_retract_large_angle():
     f3 = f1.retract(xi)
 
     np.testing.assert_allclose(f2.vectors, f3.vectors, atol=1e-8, rtol=0)
+
+
+def test_project_tangent():
+    """`Frame.project` should return a tangent vector: Re⟨f_i,ξ_i⟩ = 0."""
+    rng = np.random.default_rng(5)
+    f = Frame.random(6, 3, rng=rng)
+
+    # Build an arbitrary ambient perturbation.
+    ambient = rng.standard_normal(f.shape) + 1j * rng.standard_normal(f.shape)
+
+    proj = f.project(ambient)
+
+    # 1. Shape consistency
+    assert proj.shape == f.shape
+
+    # 2. Tangency: real part of row‑wise inner products must vanish.
+    radial = np.real(np.sum(proj.conj() * f.vectors, axis=1))
+    np.testing.assert_allclose(radial, 0.0, atol=1e-12)

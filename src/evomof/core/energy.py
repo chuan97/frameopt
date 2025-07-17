@@ -134,12 +134,6 @@ def riesz_energy(frame: Frame, s: float = 2.0, eps: float = 1e-12) -> float:
     return float(2.0 * energy_half)
 
 
-def _project_tangent(frame: Frame, arr: Complex128Array) -> Complex128Array:
-    """Orthogonalise *arr* row-wise so Re⟨f_i,ξ_i⟩ = 0."""
-    radial = np.real(np.sum(arr.conj() * frame.vectors, axis=1, keepdims=True))
-    return typing.cast(Complex128Array, arr - radial * frame.vectors)
-
-
 def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     """
     Analytic Riemannian gradient of the *p*-frame potential.
@@ -171,7 +165,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     abs_p2 = abs_g ** (p - 2)
     coeff = p * abs_p2 * g
     grad = coeff @ frame.vectors
-    return _project_tangent(frame, grad)
+    return frame.project(grad)
 
 
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
@@ -249,4 +243,4 @@ def grad_riesz_energy(
         diff = frame.vectors[idx_k] - frame.vectors[idx_j]
         grad[idx_k] += c * diff
         grad[idx_j] -= c * diff
-    return _project_tangent(frame, grad)
+    return frame.project(grad)
