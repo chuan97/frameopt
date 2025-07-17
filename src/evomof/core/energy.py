@@ -200,6 +200,8 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     return typing.cast(Complex128Array, scale * grad_frame_potential(frame, p))
 
 
+# TODO: Fix gradient for Riesz energy (fails finite-difference test)
+# See issue #12
 def grad_riesz_energy(
     frame: Frame, s: float = 2.0, eps: float = 1e-12
 ) -> Complex128Array:
