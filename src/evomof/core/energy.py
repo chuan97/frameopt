@@ -48,6 +48,11 @@ def frame_potential(frame: Frame, p: float = 4.0) -> float:
         Positive real exponent.  Even integers appear in Welch/Riesz bounds;
         a larger *p* penalises large overlaps more aggressively.
 
+    Raises
+    ------
+    ValueError
+        If ``p`` is not positive.
+
     Returns
     -------
     float
@@ -65,7 +70,14 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
 
     Defined as  (Φ_p(F))^{1/p}.  As *p*→∞ this approaches a multiple of
     the true coherence µ(F) = max_{i<j} |⟨f_i,f_j⟩|.
+
+    Raises
+    ------
+    ValueError
+        If ``p`` is not positive.
     """
+    if p <= 0:
+        raise ValueError("Exponent p must be positive.")
     phi_p = frame_potential(frame, p)
     # Guard against numerical underflow when phi_p ≈ 0
     return float(phi_p ** (1.0 / p)) if phi_p != 0.0 else 0.0
@@ -94,6 +106,11 @@ def riesz_energy(frame: Frame, s: float = 2.0, eps: float = 1e-12) -> float:
         Minimum chordal distance used to clamp nearly‑parallel pairs.  Values
         smaller than *eps* are replaced by *eps* to avoid numerical overflow
         in ``dist**(-s)`` when two vectors align.
+
+    Raises
+    ------
+    ValueError
+        If ``s`` is not positive.
 
     Returns
     -------
@@ -135,19 +152,25 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
         Positive exponent in the potential
         :math:`\\Phi_p(F) = \\sum_{i\\neq j} |\\langle f_i,f_j\\rangle|^p`.
 
+    Raises
+    ------
+    ValueError
+        If ``p`` is not positive.
+
     Returns
     -------
     Complex128Array
         Tangent array of shape ``frame.shape`` satisfying
         :math:`\\operatorname{Re}\\langle f_i,\\xi_i\\rangle = 0` for every row.
     """
+    if p <= 0:
+        raise ValueError("Exponent p must be positive.")
+
     g = frame.gram  # (n, n) complex
-    abs_p2 = np.abs(g) ** (p - 2)
+    abs_g = np.abs(g)
+    abs_p2 = abs_g ** (p - 2)
     coeff = p * abs_p2 * g
-    grad = (
-        coeff @ frame.vectors
-        - (abs_p2 * np.abs(g) ** 2).sum(axis=1, keepdims=True) * frame.vectors
-    )
+    grad = coeff @ frame.vectors
     return _project_tangent(frame, grad)
 
 
@@ -164,11 +187,18 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
         Same exponent used in :func:`diff_coherence`.  Large *p* makes the
         surrogate approach the true max‑coherence while remaining smooth.
 
+    Raises
+    ------
+    ValueError
+        If ``p`` is not positive.
+
     Returns
     -------
     Complex128Array
         Tangent gradient array with the same shape as the frame.
     """
+    if p <= 0:
+        raise ValueError("Exponent p must be positive.")
     phi_p = frame_potential(frame, p)
     if phi_p == 0.0:
         return np.zeros_like(frame.vectors)
@@ -199,6 +229,11 @@ def grad_riesz_energy(
     eps :
         Clamp for very small chordal distances to avoid overflow
         (must match the value used in :func:`riesz_energy`).
+
+    Raises
+    ------
+    ValueError
+        If ``s`` is not positive.
 
     Returns
     -------
