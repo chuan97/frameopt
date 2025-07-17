@@ -20,7 +20,7 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.optim.cma.projection import ProjectionCMA
-from evomof.optim.conjgrad import polish_with_conjgrad
+from evomof.optim.local import polish_with_cg
 
 here = pathlib.Path(__file__).resolve().parent
 
@@ -64,7 +64,7 @@ def main() -> None:
     # ----------------------------- CG polish -----------------------------
     print(f"Polishing with CG ({args.cg_iters} iterations)…")
     t1 = time.perf_counter()
-    best_polished = polish_with_conjgrad(
+    best_polished = polish_with_cg(
         best_frame,
         energy_fn=lambda F: diff_coherence(F, p=args.p),
         grad_fn=lambda F: grad_diff_coherence(F, p=args.p),

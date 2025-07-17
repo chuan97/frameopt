@@ -11,7 +11,7 @@ from evomof.core.frame import Frame
 from evomof.core.manifold import FrameManifold  # see §3
 
 
-def polish_with_conjgrad(
+def polish_with_cg(
     frame0: Frame,
     energy_fn: Callable[[Frame], float],
     grad_fn: Callable[[Frame], Complex128Array],
