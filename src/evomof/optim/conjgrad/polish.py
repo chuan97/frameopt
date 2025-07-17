@@ -8,7 +8,7 @@ from pymanopt.optimizers.conjugate_gradient import ConjugateGradient
 
 from evomof.core._types import Complex128Array
 from evomof.core.frame import Frame
-from evomof.optim.manifold import FrameManifold  # see §3
+from evomof.core.manifold import FrameManifold  # see §3
 
 
 def polish_with_conjgrad(
