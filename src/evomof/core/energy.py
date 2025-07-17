@@ -163,7 +163,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     g = frame.gram  # (n, n) complex
     abs_g = np.abs(g)
     abs_p2 = abs_g ** (p - 2)
-    coeff = p * abs_p2 * g
+    coeff = 2 * p * abs_p2 * g
     grad = coeff @ frame.vectors
     return frame.project(grad)
 
@@ -196,8 +196,8 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     phi_p = frame_potential(frame, p)
     if phi_p == 0.0:
         return np.zeros_like(frame.vectors)
-    scaled = (phi_p ** (1.0 / p - 1)) * grad_frame_potential(frame, p)
-    return typing.cast(Complex128Array, scaled)
+    scale = (phi_p ** (1.0 / p - 1)) / p
+    return typing.cast(Complex128Array, scale * grad_frame_potential(frame, p))
 
 
 def grad_riesz_energy(
@@ -234,13 +234,23 @@ def grad_riesz_energy(
     Complex128Array
         Tangent gradient array.
     """
+    # Compute all chordal distances and index upper triangle
     dist = frame.chordal_distances()
     i, j = np.triu_indices_from(dist, k=1)
+    # Clamp distances for safety
     dist_sub = np.maximum(dist[i, j], eps)
-    coeff = -s / (dist_sub ** (s + 2))
+
+    # Precompute inner products
+    g = frame.gram  # complex array of shape (n,n)
+    # The derivative factor: 4 * s * dist^{-s-2}
+    coeff = 4 * s * dist_sub ** (-(s + 2))
+
+    # Accumulate Euclidean gradient
     grad = np.zeros_like(frame.vectors)
-    for idx_k, idx_j, c in zip(i, j, coeff, strict=False):
-        diff = frame.vectors[idx_k] - frame.vectors[idx_j]
-        grad[idx_k] += c * diff
-        grad[idx_j] -= c * diff
+    for idx_i, idx_j, c, w in zip(i, j, g[i, j], coeff, strict=False):
+        # Contribution from |<f_i, f_j>|^2 dependence
+        grad[idx_i] += w * np.conj(c) * frame.vectors[idx_j]
+        grad[idx_j] += w * c * frame.vectors[idx_i]
+
+    # Project onto tangent space
     return frame.project(grad)
