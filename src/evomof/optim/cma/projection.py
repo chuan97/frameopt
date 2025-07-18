@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any
 
@@ -85,6 +85,34 @@ class ProjectionCMA:
         self._es.tell(ask, energies)
         best_idx = int(np.argmin(energies))
         return frames[best_idx], float(energies[best_idx])
+
+    def ask(self) -> list[Frame]:
+        """
+        Sample a new population from CMA-ES and project each into a Frame.
+
+        Returns
+        -------
+        list[Frame]
+            List of projected Frame objects sampled from CMA.
+        """
+        raw = self._es.ask()
+        frames = [realvec_to_frame(x, self.n, self.d) for x in raw]
+        return frames
+
+    def tell(self, frames: Sequence[Frame], energies: Sequence[float]) -> None:
+        """
+        Reinject evaluated frames and their energies into the CMA-ES optimizer.
+
+        Parameters
+        ----------
+        frames
+            Sequence of Frame objects whose fitness has been evaluated.
+        energies
+            Sequence of objective values corresponding to each frame.
+        """
+        asks = [frame_to_realvec(fr) for fr in frames]
+        # Tell the CMA-ES instance the evaluated fitness values
+        self._es.tell(asks, list(energies))
 
     def run(self, max_gen: int = 200, log_every: int = 10) -> Frame:
         """
