@@ -137,6 +137,7 @@ def main() -> None:
                 "cg_run": gen % args.cg_run_every == 0 if args.cg_run_every else False,
                 "cg_time": cg_time if "cg_time" in locals() else 0.0,
                 "cg_gain": cg_gain if "cg_gain" in locals() else 0.0,
+                "sigma": cma.sigma,
             }
         )
         # Reinjection

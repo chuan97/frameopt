@@ -21,6 +21,11 @@ class ProjectionCMA:
     1. CMA samples in the ambient R^{2nd}.
     2. Each sample is reshaped → Frame → renormalised (projection).
     3. Energy is evaluated on the projected frame.
+
+    Attributes
+    ----------
+    sigma : float
+        Current step-size of the optimizer.
     """
 
     def __init__(
@@ -160,3 +165,15 @@ class ProjectionCMA:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
         print(f"Finished {max_gen} gens in {time.time()-t0:.1f}s → best {best_E:.6e}")
         return best_frame
+
+    @property
+    def sigma(self) -> float:
+        """
+        Get the current step-size (σ) of the underlying CMA-ES optimizer.
+
+        Returns
+        -------
+        float
+            The current CMA-ES step-size (sigma).
+        """
+        return float(self._es.sigma)

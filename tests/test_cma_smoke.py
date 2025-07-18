@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
@@ -49,3 +50,13 @@ def test_tell_allows_reinjection_and_continued_optimization():
     assert isinstance(best_energy, float), "step() should return an energy float"
     # And best_energy should be finite
     assert np.isfinite(best_energy), "Energy must be finite"
+
+
+def test_sigma_property_reflects_initial_and_updates():
+    # Initialize with a known sigma0
+    algo = ProjectionCMA(n=5, d=3, sigma0=0.123, popsize=4, seed=0)
+    # Right after init, sigma should match sigma0
+    assert algo.sigma == pytest.approx(0.123)
+    # After one step, sigma should have been adapted (typically < sigma0)
+    _ = algo.step()
+    assert algo.sigma != pytest.approx(0.123)
