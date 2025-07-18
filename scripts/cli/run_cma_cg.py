@@ -145,25 +145,6 @@ def main() -> None:
             writer.writeheader()
             writer.writerows(metrics)
 
-    # ----------------------------- CG polish -----------------------------
-    print(f"Polishing with CG ({args.cg_iters} iterations)…")
-    t1 = time.perf_counter()
-    best_polished = polish_with_cg(
-        best_frame,
-        energy_fn=lambda F: diff_coherence(F, p=args.p),
-        grad_fn=lambda F: grad_diff_coherence(F, p=args.p),
-        maxiter=args.cg_iters,
-    )
-    t_cg = time.perf_counter() - t1
-    e_cg = diff_coherence(best_polished, p=args.p)
-    coh = coherence(best_polished)
-
-    # ----------------------------- Report -------------------------------
-    print(
-        f"CG done in {t_cg:.2f} s  →  diff-coh {e_cg:.6f} "
-        f"(Δ = {best_energy - e_cg:+.3e}),  coherence = {coh:.6f}"
-    )
-
 
 if __name__ == "__main__":
     main()
