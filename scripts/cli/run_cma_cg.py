@@ -13,6 +13,7 @@ $ python examples/run_cma_cg.py -n 48 -d 8 \
 from __future__ import annotations
 
 import argparse
+import csv
 import pathlib
 import time
 
@@ -47,12 +48,21 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Random seed for reproducibility (None for random)",
     )
+    p.add_argument(
+        "--log-file",
+        type=str,
+        default=None,
+        help="Path to output CSV file logging per-generation metrics",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     rng = np.random.default_rng(args.seed)
+
+    # Prepare metrics logging
+    metrics: list[dict] = []
 
     # ----------------------------- CMA stage with interleaved CG -----------------------------
     print(
@@ -73,6 +83,8 @@ def main() -> None:
     best_energy = diff_coherence(best_frame, p=args.p)
     # Main CMA loop
     for gen in range(1, args.gen + 1):
+        # Generation start timestamp
+        gen_start = time.perf_counter()
         # Sample population and evaluate
         population = cma.ask()
         energies = [diff_coherence(f, p=args.p) for f in population]
@@ -82,21 +94,39 @@ def main() -> None:
             best_energy = energies[min_idx]
             best_frame = population[min_idx]
         # Interleaved CG Polish
+        cg_time = 0.0
+        cg_gain = 0.0
         if args.cg_run_every and gen % args.cg_run_every == 0:
             # Polish current best individual
+            cg_start = time.perf_counter()
             polished = polish_with_cg(
                 best_frame,
                 energy_fn=lambda F: diff_coherence(F, p=args.p),
                 grad_fn=lambda F: grad_diff_coherence(F, p=args.p),
                 maxiter=args.cg_iters,
             )
+            cg_time = time.perf_counter() - cg_start
             # Recompute energy and replace in population
-            energies[min_idx] = diff_coherence(polished, p=args.p)
+            polished_energy = diff_coherence(polished, p=args.p)
+            cg_gain = best_energy - polished_energy
+            energies[min_idx] = polished_energy
             population[min_idx] = polished
             # Update global best if improved
             if energies[min_idx] < best_energy:
                 best_energy = energies[min_idx]
                 best_frame = polished
+        # Record metrics for this generation
+        metrics.append(
+            {
+                "gen": gen,
+                "elapsed_time": time.perf_counter() - t0,
+                "best_diff_coh": best_energy,
+                "best_coh": float(coherence(best_frame)),
+                "cg_run": gen % args.cg_run_every == 0 if args.cg_run_every else False,
+                "cg_time": cg_time if "cg_time" in locals() else 0.0,
+                "cg_gain": cg_gain if "cg_gain" in locals() else 0.0,
+            }
+        )
         # Reinjection
         cma.tell(population, energies)
         # Optional logging every 10% of run
@@ -107,6 +137,13 @@ def main() -> None:
     print(
         f"CMA stage complete in {t_cma:.2f}s; diff-coh = {best_energy:.6f}, coherence = {coh_cma:.6f}"
     )
+
+    # Write metrics to CSV if requested
+    if args.log_file:
+        with open(args.log_file, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=list(metrics[0].keys()))
+            writer.writeheader()
+            writer.writerows(metrics)
 
     # ----------------------------- CG polish -----------------------------
     print(f"Polishing with CG ({args.cg_iters} iterations)…")
