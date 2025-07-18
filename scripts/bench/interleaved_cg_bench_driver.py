@@ -36,6 +36,7 @@ def get_git_commit_hash(short: bool = True) -> str:
 def main() -> None:
     script_path = Path(__file__)
     script_dir = script_path.parent
+    runner = script_dir.parent / "cli" / "run_cma_cg.py"
     script_stem = script_path.stem
     # Expect script_stem to end with '_bench_driver'
     if not script_stem.endswith("_bench_driver"):
@@ -97,6 +98,8 @@ def main() -> None:
     p_exp = config["p_exp"]
     cg_iters = config.get("cg_iters")
 
+    summary = []
+
     # Loop through combinations
     for n, d in dims:
         for cg_every in cg_every_list:
@@ -113,7 +116,7 @@ def main() -> None:
                 # Build command
                 cmd = [
                     sys.executable,
-                    "scripts/cli/run_cma_cg.py",
+                    str(runner),
                     "-n",
                     str(n),
                     "-d",
@@ -137,9 +140,29 @@ def main() -> None:
                     cmd += ["--cg-iters", str(cg_iters)]
 
                 print(f"Running: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True)
+                try:
+                    subprocess.run(cmd, check=True)
+                    summary.append(
+                        {"tag": tag, "status": "success", "log_file": str(log_file)}
+                    )
+                except subprocess.CalledProcessError as e:
+                    summary.append(
+                        {
+                            "tag": tag,
+                            "status": "failed",
+                            "log_file": str(log_file),
+                            "error": str(e),
+                        }
+                    )
+                    print(f"Error running command: {' '.join(cmd)}", file=sys.stderr)
+                    print(f"Error: {e}", file=sys.stderr)
+                    continue
+
+    with open(exp_dir / "summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
 
     print(f"All experiments complete. Results in {exp_dir}")
 
 
-main()
+if __name__ == "__main__":
+    main()
