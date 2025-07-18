@@ -54,6 +54,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to output CSV file logging per-generation metrics",
     )
+    p.add_argument(
+        "--export-npy",
+        type=str,
+        default=None,
+        help="Output filename to save final frame as .npy",
+    )
+    p.add_argument(
+        "--export-txt",
+        type=str,
+        default=None,
+        help="Output filename to save final frame as flat text submission format",
+    )
     return p.parse_args()
 
 
@@ -144,6 +156,14 @@ def main() -> None:
             writer = csv.DictWriter(csvfile, fieldnames=list(metrics[0].keys()))
             writer.writeheader()
             writer.writerows(metrics)
+
+    # Export final frame if requested
+    if args.export_npy:
+        best_frame.save_npy(args.export_npy)
+        print(f"Saved final frame to .npy → {args.export_npy}")
+    if args.export_txt:
+        best_frame.export_txt(args.export_txt)
+        print(f"Saved final frame to .txt → {args.export_txt}")
 
 
 if __name__ == "__main__":
