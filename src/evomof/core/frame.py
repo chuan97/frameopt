@@ -291,6 +291,57 @@ class Frame:
     def __iter__(self) -> Iterator[Complex128Array]:
         return iter(self.vectors)
 
+    def save_npy(self, path: str) -> None:
+        """
+        Save this frame's vectors to a NumPy .npy file.
+
+        Parameters
+        ----------
+        path : str
+            Path where the .npy file will be written.
+        """
+        # Save the complex array directly
+        np.save(path, self.vectors)
+
+    @classmethod
+    def load_npy(cls, path: str) -> "Frame":
+        """
+        Load a Frame from a NumPy .npy file containing a complex array.
+
+        Parameters
+        ----------
+        path : str
+            Path to the .npy file to load.
+
+        Returns
+        -------
+        Frame
+            A Frame initialized from the loaded array.
+        """
+        arr = np.load(path)
+        return cls.from_array(arr, copy=False)
+
+    def export_txt(self, path: str) -> None:
+        """
+        Export this frame to a text file in the submission format:
+        - First all real parts (row-major), one per line, then all imaginary parts.
+        - Each number formatted with 18-digit exponential notation.
+
+        Parameters
+        ----------
+        path : str
+            Path where the .txt file will be written. Filename
+            should follow `<d>x<n>_<tag>.txt` convention externally.
+        """
+        # Flatten row-major: rows are vectors
+        flat_real = self.vectors.real.ravel(order="C")
+        flat_imag = self.vectors.imag.ravel(order="C")
+        with open(path, "w") as f:
+            for val in flat_real:
+                f.write(f"{val:.15e}\n")
+            for val in flat_imag:
+                f.write(f"{val:.15e}\n")
+
     def __repr__(self) -> str:  # pragma: no cover
         n, d = self.shape
         return f"Frame(n={n}, d={d})"
