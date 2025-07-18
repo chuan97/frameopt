@@ -1,6 +1,9 @@
 # VS Code settings
 .vscode/
 
+# macOS
+.DS_Store
+
 # Bytecode and metadata
 __pycache__/
 *.py[cod]
@@ -21,3 +24,4 @@ results/
 # Experiments
 scripts/bench/*_bench_config.json
 !scripts/bench/reference_*_bench_config.json
+analysis/notebooks/
