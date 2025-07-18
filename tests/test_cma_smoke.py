@@ -11,7 +11,7 @@ def test_ask_returns_correct_population():
     """
     n, d, popsize = 7, 4, 12
     algo = ProjectionCMA(
-        n=n, d=d, sigma0=0.5, popsize=popsize, rng=123, energy_kwargs={"p": 4}
+        n=n, d=d, sigma0=0.5, popsize=popsize, seed=123, energy_kwargs={"p": 4}
     )
     pop = algo.ask()
     # Check type and length
@@ -35,7 +35,7 @@ def test_tell_allows_reinjection_and_continued_optimization():
     n, d, popsize = 6, 3, 8
     # Use a simple energy proxy via energy_kwargs
     algo = ProjectionCMA(
-        n=n, d=d, sigma0=0.3, popsize=popsize, rng=42, energy_kwargs={"p": 6}
+        n=n, d=d, sigma0=0.3, popsize=popsize, seed=42, energy_kwargs={"p": 6}
     )
     # Sample a population
     population = algo.ask()

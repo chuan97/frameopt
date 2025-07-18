@@ -29,7 +29,7 @@ class ProjectionCMA:
         d: int,
         sigma0: float = 0.2,
         popsize: int | None = None,
-        rng: int | np.random.Generator | None = None,
+        seed: int | None = None,
         *,
         energy_fn: Callable[..., float] = diff_coherence,
         energy_kwargs: dict[str, Any] | None = None,
@@ -38,13 +38,21 @@ class ProjectionCMA:
         energy_kwargs :
             Extra keyword arguments forwarded to *energy_fn* via
             :pyfunc:`functools.partial`.
+
+        Parameters
+        ----------
+        seed :
+            Optional integer seed for random number generation.
         """
         self.n, self.d = n, d
 
-        # Convert int seed to Generator for mypy compatibility
-        if isinstance(rng, int):
-            rng = np.random.default_rng(rng)
-        rng_gen: np.random.Generator | None = rng
+        rng_gen = np.random.default_rng(seed)
+        cma_seed = seed
+        cma_opts: dict[str, Any] = {}
+        if popsize is not None:
+            cma_opts["popsize"] = popsize
+        if cma_seed is not None:
+            cma_opts["seed"] = cma_seed
 
         # Final energy callable expects exactly one Frame positional arg.
         self.energy_fn: Callable[[Frame], float] = partial(
@@ -55,7 +63,7 @@ class ProjectionCMA:
         self._es = cmaes.CMAEvolutionStrategy(
             frame_to_realvec(mean),
             sigma0,
-            {"popsize": popsize} if popsize else {},
+            cma_opts,
         )
 
     def step(self) -> tuple[Frame, float]:
@@ -126,23 +134,29 @@ class ProjectionCMA:
             Print progress every *log_every* generations.  Set to ``0`` to
             disable console output.
 
+        Raises
+        ------
+        ValueError
+            If `max_gen` is negative.
+
         Returns
         -------
         Frame
             The best frame found over the entire run, according to
             ``self.energy_fn``.
         """
+        if max_gen < 0:
+            raise ValueError(f"max_gen must be non-negative, got {max_gen}")
         t0 = time.time()
-        # First generation establishes a concrete best_frame (non‑None).
-        cand, E = self.step()
-        best_frame: Frame = cand.copy()
-        best_E: float = E
+        # Initialize best_frame randomly to handle max_gen=0 cleanly
+        best_frame: Frame = Frame.random(self.n, self.d)
+        best_E: float = self.energy_fn(best_frame)
 
-        for g in range(2, max_gen + 1):
+        for g in range(1, max_gen + 1):
             cand, E = self.step()
             if E < best_E:
                 best_frame, best_E = cand.copy(), E
-            if g % log_every == 0:
+            if log_every and g % log_every == 0:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
         print(f"Finished {max_gen} gens in {time.time()-t0:.1f}s → best {best_E:.6e}")
         return best_frame
