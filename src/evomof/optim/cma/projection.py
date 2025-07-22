@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -177,3 +177,18 @@ class ProjectionCMA:
             The current CMA-ES step-size (sigma).
         """
         return float(self._es.sigma)
+
+    @sigma.setter
+    def sigma(self, value: float) -> None:
+        """Set the CMA-ES global step-size σ."""
+        self._es.sigma = float(value)
+
+    @property
+    def mean(self) -> np.ndarray:
+        """Current mean vector of the CMA-ES search distribution."""
+        return cast(np.ndarray, self._es.mean)
+
+    @mean.setter
+    def mean(self, value: Sequence[float] | np.ndarray) -> None:
+        """Overwrite the CMA search mean with *value*."""
+        self._es.mean = np.asarray(value, dtype=float)

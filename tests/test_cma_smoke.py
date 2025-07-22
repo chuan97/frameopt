@@ -3,6 +3,7 @@ import pytest
 
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma.utils import realvec_to_frame
 
 
 def test_ask_returns_correct_population():
@@ -60,3 +61,97 @@ def test_sigma_property_reflects_initial_and_updates():
     # After one step, sigma should have been adapted (typically < sigma0)
     _ = algo.step()
     assert algo.sigma != pytest.approx(0.123)
+
+
+def test_sigma_setter_updates_value():
+    """
+    Writing to ProjectionCMA.sigma should propagate to the underlying CMA-ES
+    strategy and be readable back via the same property.
+    """
+    algo = ProjectionCMA(n=4, d=2, sigma0=0.1, popsize=6, seed=7)
+    # Change sigma
+    algo.sigma = 0.314
+    # Read back and verify
+    assert algo.sigma == pytest.approx(0.314), "Setter should update sigma"
+
+
+def test_mean_property_roundtrip():
+    """
+    The mean property should allow round‑trip assignment of a custom vector.
+    """
+    n, d = 3, 2
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.2, popsize=5, seed=11)
+    new_mean = np.full(2 * n * d, 0.123)  # simple deterministic vector
+    algo.mean = new_mean
+    assert np.allclose(algo.mean, new_mean), "Mean setter/getter round‑trip failed"
+
+
+def test_mean_setter_shifts_offspring():
+    """Changing ProjectionCMA.mean should steer the next offspring batch."""
+    n, d, pop = 3, 2, 64
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.4, popsize=pop, seed=2025)
+
+    m0 = algo.mean.copy()
+
+    # shift mean far away
+    new_mean = m0 + 5.0 * m0[::-1]
+    algo.mean = new_mean
+
+    # next generation
+    xs_raw = algo._es.ask()
+    m1 = np.mean(xs_raw, axis=0)
+
+    assert np.linalg.norm(m1 - new_mean) < 0.1 * np.linalg.norm(m0 - new_mean)
+
+
+def test_sigma_setter_scales_variance():
+    """Boosting ProjectionCMA.sigma should widen the raw sampling cloud."""
+    n, d, pop = 4, 3, 100
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.2, popsize=pop, seed=77)
+
+    # --- baseline spread -----------------------------------------------
+    xs0_raw = algo._es.ask()  # raw ambient vectors
+    xs0 = np.vstack(xs0_raw)  # (pop, 2*n*d)
+    std0 = xs0.std()
+
+    # Tell CMA something so a second ask() is legal
+    algo._es.tell(xs0_raw, [0.0] * pop)  # dummy fitness
+
+    # --- boost sigma and resample --------------------------------------
+    algo.sigma *= 3.0
+    xs1_raw = algo._es.ask()
+    xs1 = np.vstack(xs1_raw)
+    std1 = xs1.std()
+
+    # Expect clearly wider cloud (≥1.4×) but not insane
+    assert std1 > 1.4 * std0, "Sigma boost did not increase spread enough"
+    assert std1 < 3.8 * std0, "Spread exploded beyond expectation"
+
+
+def test_tweak_persists_across_generation():
+    """
+    After mutating mean and sigma *post‑tell*, the very next raw sampling cloud
+    should (a) be centred on the new mean and (b) exhibit a noticeably larger
+    standard deviation.
+    """
+    algo = ProjectionCMA(n=3, d=2, sigma0=0.1, popsize=20, seed=999)
+
+    # -- generation 0 ----------------------------------------------------
+    pop0_raw = algo._es.ask()  # raw ambient
+    frames0 = [realvec_to_frame(x, algo.n, algo.d) for x in pop0_raw]
+    energies0 = [algo.energy_fn(fr) for fr in frames0]
+    algo._es.tell(pop0_raw, energies0)
+
+    baseline_std = np.vstack(pop0_raw).std()
+
+    # Inject a large sigma and set a far‑away mean
+    algo.sigma = 1.5
+    algo.mean = np.full(2 * algo.n * algo.d, 2.0)
+
+    # -- generation 1 ----------------------------------------------------
+    pop1_raw = algo._es.ask()
+    xs = np.vstack(pop1_raw)
+
+    # Expect the sample mean ~ 2.0 (within 0.5) and std clearly larger
+    assert np.allclose(xs.mean(), 2.0, atol=0.5), "Mean tweak did not propagate"
+    assert xs.std() > 1.4 * baseline_std, "Sigma tweak did not widen spread"
