@@ -22,6 +22,7 @@ import numpy as np
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma.utils import frame_to_realvec
 from evomof.optim.local import polish_with_cg
 
 here = pathlib.Path(__file__).resolve().parent
@@ -66,6 +67,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output filename to save final frame as flat text submission format",
     )
+    p.add_argument(
+        "--mean-mix-coeff",
+        type=float,
+        default=0.5,
+        help="Blend coefficient (0–1) for mixing CMA mean toward the CG‑polished individual; 0 disables mean mixing",
+    )
+    p.add_argument(
+        "--sigma-boost",
+        type=float,
+        default=2.0,
+        help="Multiplicative factor (>1) to increase CMA sigma after mean mixing; 1 disables boosting",
+    )
+    p.add_argument(
+        "--no-inject-polished",
+        action="store_false",
+        dest="inject_polished",
+        help="Skip inserting the CG‑polished individual into the CMA population; rely only on mean mixing/sigma boosting",
+    )
     return p.parse_args()
 
 
@@ -93,21 +112,26 @@ def main() -> None:
     # Initialize best_frame and best_energy (handles cases like gen=0)
     best_frame = Frame.random(args.n, args.d, rng=rng)
     best_energy = diff_coherence(best_frame, p=args.p)
+
     # Main CMA loop
     for gen in range(1, args.gen + 1):
         # Generation start timestamp
         gen_start = time.perf_counter()
+
         # Sample population and evaluate
         population = cma.ask()
         energies = [diff_coherence(f, p=args.p) for f in population]
+
         # Update global best
         min_idx = int(np.argmin(energies))
         if energies[min_idx] < best_energy:
             best_energy = energies[min_idx]
             best_frame = population[min_idx]
+
         # Interleaved CG Polish
         cg_time = 0.0
         cg_gain = 0.0
+        polished_vec: np.ndarray | None = None
         if args.cg_run_every and gen % args.cg_run_every == 0:
             # Polish current best individual
             cg_start = time.perf_counter()
@@ -117,34 +141,52 @@ def main() -> None:
                 grad_fn=lambda F: grad_diff_coherence(F, p=args.p),
                 maxiter=args.cg_iters,
             )
+            polished_vec = frame_to_realvec(polished)
             cg_time = time.perf_counter() - cg_start
+
             # Recompute energy and replace in population
             polished_energy = diff_coherence(polished, p=args.p)
             cg_gain = best_energy - polished_energy
-            energies[min_idx] = polished_energy
-            population[min_idx] = polished
+            if args.inject_polished:
+                energies[min_idx] = polished_energy
+                population[min_idx] = polished
+
             # Update global best if improved
             if energies[min_idx] < best_energy:
                 best_energy = energies[min_idx]
                 best_frame = polished
-        # Record metrics for this generation
+
+        # Reinjection
+        cma.tell(population, energies)
+
+        # --- Mean mixing and sigma boosting (post‑tell) -----------------
+        if polished_vec is not None:
+            if args.mean_mix_coeff > 0.0:
+                cma.mean = (
+                    1.0 - args.mean_mix_coeff
+                ) * cma.mean + args.mean_mix_coeff * polished_vec
+            if args.sigma_boost > 1.0:
+                cma.sigma *= args.sigma_boost
+
+        # Record metrics for this generation (after mix/boost)
         metrics.append(
             {
                 "gen": gen,
                 "elapsed_time": time.perf_counter() - t0,
                 "best_diff_coh": best_energy,
                 "best_coh": float(coherence(best_frame)),
-                "cg_run": gen % args.cg_run_every == 0 if args.cg_run_every else False,
-                "cg_time": cg_time if "cg_time" in locals() else 0.0,
-                "cg_gain": cg_gain if "cg_gain" in locals() else 0.0,
+                "cg_run": bool(args.cg_run_every and gen % args.cg_run_every == 0),
+                "cg_time": cg_time,
+                "cg_gain": cg_gain,
                 "sigma": cma.sigma,
+                "mean_norm": float(np.linalg.norm(cma.mean)),
             }
         )
-        # Reinjection
-        cma.tell(population, energies)
+
         # Optional logging every 10% of run
         if gen % max(args.gen // 10, 1) == 0:
             print(f"  Gen {gen}: best diff-coh = {best_energy:.6f}")
+
     t_cma = time.perf_counter() - t0
     coh_cma = coherence(best_frame)
     print(

@@ -96,7 +96,12 @@ def main() -> None:
     popsize = config["popsize"]
     sigma0 = config["sigma0"]
     p_exp = config["p_exp"]
+
+    # Optional CMA–CG knobs
     cg_iters = config.get("cg_iters")
+    mean_mix_coeff = config.get("mean_mix_coeff")  # float or None
+    sigma_boost = config.get("sigma_boost")  # float or None
+    inject_polished = config.get("inject_polished", True)  # bool
 
     summary = []
 
@@ -138,6 +143,12 @@ def main() -> None:
                     cmd += ["--seed", str(seed)]
                 if cg_iters is not None:
                     cmd += ["--cg-iters", str(cg_iters)]
+                if mean_mix_coeff is not None:
+                    cmd += ["--mean-mix-coeff", str(mean_mix_coeff)]
+                if sigma_boost is not None:
+                    cmd += ["--sigma-boost", str(sigma_boost)]
+                if not inject_polished:
+                    cmd += ["--no-inject-polished"]
 
                 print(f"Running: {' '.join(cmd)}")
                 try:
