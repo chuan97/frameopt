@@ -110,10 +110,10 @@ def main():
     # 5) Export if requested
     if args.export_npy:
         polished.save_npy(args.export_npy)
-        print(f"Saved polished frame → {args.export_npy}")
+        print(f"Saved frame as .npy → {args.export_npy}")
     if args.export_txt:
         polished.export_txt(args.export_txt)
-        print(f"Saved submission .txt → {args.export_txt}")
+        print(f"Saved frame as .txt → {args.export_txt}")
 
 
 if __name__ == "__main__":

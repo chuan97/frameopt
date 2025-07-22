@@ -92,8 +92,10 @@ def main() -> None:
     # Optional export of best frame
     if args.export_npy:
         best_frame.save_npy(args.export_npy)
+        print(f"Saved frame as .npy → {args.export_npy}")
     if args.export_txt:
         best_frame.export_txt(args.export_txt)
+        print(f"Saved frame as .txt → {args.export_txt}")
 
 
 if __name__ == "__main__":
