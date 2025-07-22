@@ -162,9 +162,17 @@ def main() -> None:
         # --- Mean mixing and sigma boosting (post‑tell) -----------------
         if polished_vec is not None:
             if args.mean_mix_coeff > 0.0:
-                cma.mean = (
-                    1.0 - args.mean_mix_coeff
-                ) * cma.mean + args.mean_mix_coeff * polished_vec
+                # --- Direction‑only blend ----------------------------------
+                old_norm = np.linalg.norm(cma.mean)
+                if old_norm > 0.0:  # guard against numerical edge case
+                    mean_dir = cma.mean / old_norm
+                    pol_dir = polished_vec / np.linalg.norm(polished_vec)
+                    mixed_dir = (
+                        1.0 - args.mean_mix_coeff
+                    ) * mean_dir + args.mean_mix_coeff * pol_dir
+                    mixed_dir /= np.linalg.norm(mixed_dir)  # renormalise to unit length
+                    # re‑apply original radius so radius statistics stay unchanged
+                    cma.mean = mixed_dir * old_norm
             if args.sigma_boost > 1.0:
                 cma.sigma *= args.sigma_boost
 
