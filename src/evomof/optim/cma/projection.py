@@ -163,7 +163,7 @@ class ProjectionCMA:
                 best_frame, best_E = cand.copy(), E
             if log_every and g % log_every == 0:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
-        print(f"Finished {max_gen} gens in {time.time()-t0:.1f}s → best {best_E:.6e}")
+        print(f"Finished {max_gen} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
         return best_frame
 
     @property

@@ -75,4 +75,5 @@ def polish_with_cg(
         verbosity=verbosity,
         **solver_kw,
     )
-    return cast(Frame, solver.run(problem, initial_point=frame0).point)
+    result = solver.run(problem, initial_point=frame0)
+    return cast(Frame, result.point)

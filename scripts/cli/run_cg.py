@@ -2,14 +2,14 @@
 """
 run_cg.py
 
-Conjugate‐gradient polish for Grassmannian frames.
+Conjugate‐gradient for frames
 
 Usage examples:
   # Polish an existing frame:
   python run_cg.py --input results/frame.npy --cg-iters 50 --export-npy results/frame_polished.npy
 
   # Generate a random 4×40 frame and polish it:
-  python run_cg.py --n 40 --d 4 --seed 123 --cg-iters 30 --export-txt 4x40_abcd.txt
+  python run_cg.py -n 40 -d 4 --seed 123 --cg-iters 30 --export-txt 4x40_abcd.txt
 """
 
 import argparse
@@ -23,25 +23,21 @@ from evomof.optim.local.cg import polish_with_cg
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="CG polish for Frames")
+    p = argparse.ArgumentParser(description="CG for frames")
     p.add_argument(
-        "--input",
-        "-i",
-        type=str,
-        default=None,
-        help="Path to input Frame .npy file; if omitted, a random frame is created",
-    )
-    p.add_argument(
-        "--n",
+        "-n",
         type=int,
         default=None,
         help="Number of vectors (n) (required if --input is omitted)",
     )
     p.add_argument(
-        "--d",
+        "-d",
         type=int,
         default=None,
         help="Ambient dimension (d) (required if --input is omitted)",
+    )
+    p.add_argument(
+        "--p", type=int, default=40, help="Exponent p for differentiable coherence"
     )
     p.add_argument(
         "--seed",
@@ -53,7 +49,10 @@ def parse_args():
         "--cg-iters", type=int, default=30, help="Maximum CG polish iterations"
     )
     p.add_argument(
-        "--p", type=int, default=4, help="Exponent p for differentiable coherence"
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print CG iteration count and stopping criterion",
     )
     p.add_argument(
         "--export-npy",
@@ -66,6 +65,13 @@ def parse_args():
         type=str,
         default=None,
         help="If set, export the polished Frame to flat .txt (submission format)",
+    )
+    p.add_argument(
+        "--input",
+        "-i",
+        type=str,
+        default=None,
+        help="Path to input Frame .npy file; if omitted, a random frame is created",
     )
     return p.parse_args()
 
@@ -82,11 +88,6 @@ def main():
         rng = np.random.default_rng(args.seed)
         frame = Frame.random(n=args.n, d=args.d, rng=rng)
 
-    # 2) Report initial quality
-    init_diff = diff_coherence(frame, p=args.p)
-    init_coh = coherence(frame)
-    print(f"[Init]  diff-coh = {init_diff:.6e}, coherence = {init_coh:.6e}")
-
     # 3) Run CG polish
     t0 = time.perf_counter()
     polished = polish_with_cg(
@@ -94,6 +95,7 @@ def main():
         energy_fn=lambda F: diff_coherence(F, p=args.p),
         grad_fn=lambda F: grad_diff_coherence(F, p=args.p),
         maxiter=args.cg_iters,
+        verbosity=1 if args.verbose else 0,
     )
     t_polish = time.perf_counter() - t0
 
@@ -101,10 +103,8 @@ def main():
     final_diff = diff_coherence(polished, p=args.p)
     final_coh = coherence(polished)
     print(
-        f"[Polished] time={t_polish:.2f}s  "
-        f"diff-coh = {final_diff:.6e}  "
-        f"(Δ {init_diff - final_diff:+.3e}),  "
-        f"coherence = {final_coh:.6e}"
+        f"[Polished] time={t_polish:.2f}s  |  "
+        f"diff-coh = {final_diff:.8f}  |  coherence = {final_coh:.8f}"
     )
 
     # 5) Export if requested
