@@ -16,6 +16,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from evomof.core.energy import coherence, diff_coherence
@@ -43,8 +44,10 @@ COMMON_CMA = [
     "40",
     "-p",
     str(P_EXP),
-    "--gen",
-    "5000",
+    "--max-gen",
+    "10000",
+    "--tol",
+    "1e-20",
     "--seed",
     "42",
 ]
@@ -81,11 +84,14 @@ def main() -> None:
             str(d),
             *COMMON_CMA,
         ]
+        t0 = time.perf_counter()
         e_cma, c_cma = run_and_load(cmd_cma, cma_tmp, P_EXP)
+        t_cma = time.perf_counter() - t0
 
         # CG multistart
         best_e_cg = float("inf")
         best_c_cg = float("nan")
+        t_cg_total = 0.0
         for seed in range(CG_N_STARTS):
             cg_tmp = Path(tempfile.gettempdir()) / f"cg_{n}x{d}_s{seed}.npy"
             cmd_cg = [
@@ -99,18 +105,21 @@ def main() -> None:
                 str(seed),
                 *COMMON_CG,
             ]
+            t0 = time.perf_counter()
             e_tmp, c_tmp = run_and_load(cmd_cg, cg_tmp, P_EXP)
+            t_cg_total += time.perf_counter() - t0
             if e_tmp < best_e_cg:
                 best_e_cg, best_c_cg = e_tmp, c_tmp
-        results.append((n, d, e_cma, best_e_cg, c_cma, best_c_cg))
+        results.append((n, d, e_cma, best_e_cg, c_cma, best_c_cg, t_cma, t_cg_total))
 
     # Print summary once
-    print(" n   d     CMA_E         CG_E        ΔE        Δcoh")
-    print("-" * 55)
-    for n, d, e_cma, e_cg, c_cma, c_cg in results:
+    print(" n   d   ΔE          CMA_coh      CG_coh      Δcoh        tCMA    tCG    Δt")
+    print("-" * 80)
+    for n, d, e_cma, e_cg, c_cma, c_cg, t_cma, t_cg in results:
         print(
-            f"{n:2d}  {d:2d}  {e_cma:11.3e}  {e_cg:11.3e}  "
-            f"{e_cma - e_cg: .2e}  {c_cma - c_cg: .2e}"
+            f"{n:2d}  {d:2d}  {e_cma - e_cg: .2e}  "
+            f"{c_cma:.8f}  {c_cg:.8f}  {c_cma - c_cg: .2e}  "
+            f"{t_cma:6.2f}  {t_cg:6.2f}  {t_cma - t_cg: .2e}"
         )
 
 

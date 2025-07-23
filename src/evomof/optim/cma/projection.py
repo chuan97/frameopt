@@ -127,14 +127,20 @@ class ProjectionCMA:
         # Tell the CMA-ES instance the evaluated fitness values
         self._es.tell(asks, list(energies))
 
-    def run(self, max_gen: int = 200, log_every: int = 10) -> Frame:
+    def run(self, max_gen: int = 200, tol: float = 1e-9, log_every: int = 10) -> Frame:
         """
-        Run the optimiser for a fixed number of generations.
+        Run the optimiser until convergence or a generation cap is reached.
+
+        Run until the best energy **of the current generation** changes by less than
+        `tol`, or until `max_gen` generations have been executed.
 
         Parameters
         ----------
         max_gen :
             Total number of generations to execute.
+        tol :
+            Absolute tolerance on the improvement of the best energy.
+            Optimisation stops when ``abs(E_best_prev - E_best) < tol``.
         log_every :
             Print progress every *log_every* generations.  Set to ``0`` to
             disable console output.
@@ -156,6 +162,7 @@ class ProjectionCMA:
         # Initialize best_frame randomly to handle max_gen=0 cleanly
         best_frame: Frame = Frame.random(self.n, self.d)
         best_E: float = self.energy_fn(best_frame)
+        prev_E: float | None = None  # track energy of previous generation
 
         for g in range(1, max_gen + 1):
             cand, E = self.step()
@@ -163,7 +170,13 @@ class ProjectionCMA:
                 best_frame, best_E = cand.copy(), E
             if log_every and g % log_every == 0:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
-        print(f"Finished {max_gen} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
+            # convergence check on generation‑best energy
+            if tol > 0 and prev_E is not None and abs(prev_E - E) < tol:
+                if log_every:
+                    print(f"Converged (|ΔE| < {tol}) at generation {g}")
+                break
+            prev_E = E
+        print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
         return best_frame
 
     @property

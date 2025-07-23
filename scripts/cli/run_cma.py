@@ -5,7 +5,7 @@ run_cma.py
 Projection-CMA for frames
 
 Example:
-    python run_cma.py -n 48 -d 8 --sigma0 0.4 --popsize 80 --gen 200
+    python run_cma.py -n 48 -d 8 --sigma0 0.4 --popsize 80 --max-gen 200
 """
 
 from __future__ import annotations
@@ -31,7 +31,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("-p", type=float, default=40, help="Exponent p for diff-coherence")
     p.add_argument("--sigma0", type=float, default=0.3, help="Initial CMA sigma")
     p.add_argument("--popsize", type=int, default=40, help="Population λ")
-    p.add_argument("--gen", type=int, default=100, help="Generations")
+    p.add_argument("--max-gen", type=int, default=100, help="Maximum generations")
+    p.add_argument(
+        "--tol",
+        type=float,
+        default=1e-9,
+        help="Absolute tolerance; stop when best‑energy improvement < tol",
+    )
     p.add_argument("--seed", type=int, default=None, help="Random seed")
     p.add_argument(
         "--export-npy",
@@ -80,7 +86,11 @@ def main() -> None:
     else:
         best_frame = Frame.random(args.n, args.d, rng=rng)
 
-    best_frame = cma.run(max_gen=args.gen, log_every=max(args.gen // 10, 1))
+    best_frame = cma.run(
+        max_gen=args.max_gen,
+        tol=args.tol,
+        log_every=max(args.max_gen // 10, 1),
+    )
     best_energy = diff_coherence(best_frame, p=args.p)
 
     runtime = time.perf_counter() - t0
