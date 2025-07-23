@@ -132,7 +132,7 @@ def main() -> None:
                     str(popsize),
                     "--sigma0",
                     str(sigma0),
-                    "--p",
+                    "-p",
                     str(p_exp),
                     "--log-file",
                     str(log_file),

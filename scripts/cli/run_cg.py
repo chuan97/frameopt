@@ -37,7 +37,7 @@ def parse_args():
         help="Ambient dimension (d) (required if --input is omitted)",
     )
     p.add_argument(
-        "--p", type=int, default=40, help="Exponent p for differentiable coherence"
+        "-p", type=int, default=40, help="Exponent p for differentiable coherence"
     )
     p.add_argument(
         "--seed",

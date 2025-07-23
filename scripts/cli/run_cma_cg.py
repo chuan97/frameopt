@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CMA → CG pipeline benchmark")
     p.add_argument("-n", type=int, default=16, help="Number of frame vectors")
     p.add_argument("-d", type=int, default=4, help="Ambient dimension")
-    p.add_argument("--p", type=float, default=10, help="p exponent (diff-coherence)")
+    p.add_argument("-p", type=float, default=10, help="p exponent (diff-coherence)")
     p.add_argument("--sigma0", type=float, default=0.3, help="Initial CMA sigma")
     p.add_argument("--popsize", type=int, default=40, help="CMA population λ")
     p.add_argument("--gen", type=int, default=100, help="CMA generations")
