@@ -7,7 +7,7 @@ name = "evomof"
 version = "0.1.0"
 description = "Evolutionary optimisation of Grassmannian frames"
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "Juan Román Roche", email = "jroman@unizar.es" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -45,6 +45,7 @@ module = "pymanopt.*"
 ignore_missing_imports = true
 
 [tool.hatch.envs.default]
+path = ".venv"
 dependencies = [
     "pytest",
     "black",
@@ -52,6 +53,14 @@ dependencies = [
     "mypy",
 ]
 post-install = "python -m pip install -e .[dev]"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+    "mypy",
+]
 
 [tool.hatch.envs.default.scripts]
 lint = "ruff check src tests && black --check src tests"
