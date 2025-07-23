@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--tol",
         type=float,
-        default=1e-9,
+        default=1e-20,
         help="Absolute tolerance; stop when best‑energy improvement < tol",
     )
     p.add_argument("--seed", type=int, default=None, help="Random seed")
