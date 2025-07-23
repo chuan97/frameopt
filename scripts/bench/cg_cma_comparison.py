@@ -51,7 +51,7 @@ COMMON_CMA = [
 
 CG_N_STARTS = 20
 
-COMMON_CG = ["--cg-iters", "300", "--p", str(P_EXP), "--verbose"]
+COMMON_CG = ["--cg-iters", "1000", "--p", str(P_EXP), "--verbose"]
 
 
 def run_and_load(cmd: list[str], out_path: Path, p: int) -> tuple[float, float]:
