@@ -3,7 +3,7 @@ import pytest
 
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
-from evomof.optim.cma.utils import realvec_to_frame
+from evomof.optim.cma.utils import frame_to_realvec, realvec_to_frame
 
 
 def test_ask_returns_correct_population():
@@ -155,3 +155,24 @@ def test_tweak_persists_across_generation():
     # Expect the sample mean ~ 2.0 (within 0.5) and std clearly larger
     assert np.allclose(xs.mean(), 2.0, atol=0.5), "Mean tweak did not propagate"
     assert xs.std() > 1.4 * baseline_std, "Sigma tweak did not widen spread"
+
+
+def test_run_stops_on_tol():
+    n, d = 4, 2
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.3, popsize=12, seed=123)
+
+    # run with an intentionally loose tolerance
+    best = algo.run(max_gen=200, tol=1e-2, log_every=0)
+
+    # Assert we didn’t need all 200 generations
+    assert algo._es.countiter < 200, "run() did not stop early on tol"
+    assert isinstance(best, Frame)
+
+
+def test_start_frame_is_used():
+    n, d = 5, 3
+    init = Frame.random(n, d, rng=np.random.default_rng(999))
+
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.4, popsize=10, seed=1, start_frame=init)
+    # Mean right after init should equal flattened input
+    assert np.allclose(algo.mean, frame_to_realvec(init))

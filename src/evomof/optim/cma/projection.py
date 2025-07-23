@@ -33,6 +33,7 @@ class ProjectionCMA:
         n: int,
         d: int,
         sigma0: float = 0.2,
+        start_frame: Frame | None = None,
         popsize: int | None = None,
         seed: int | None = None,
         *,
@@ -48,6 +49,9 @@ class ProjectionCMA:
         ----------
         seed :
             Optional integer seed for random number generation.
+        start_frame :
+            Optional initial Frame whose flattened vector is used as the CMA
+            mean.  If *None* (default), a random frame is generated.
         """
         self.n, self.d = n, d
 
@@ -64,9 +68,18 @@ class ProjectionCMA:
             energy_fn, **(energy_kwargs or {})
         )
 
-        mean = Frame.random(n, d, rng=rng_gen)
+        if start_frame is not None:
+            if start_frame.shape != (n, d):
+                raise ValueError(
+                    "start_frame dimensions mismatch: "
+                    f"expected ({n},{d}), got ({start_frame.shape})"
+                )
+            mean_frame = start_frame.copy()
+        else:
+            mean_frame = Frame.random(n, d, rng=rng_gen)
+
         self._es = cmaes.CMAEvolutionStrategy(
-            frame_to_realvec(mean),
+            frame_to_realvec(mean_frame),
             sigma0,
             cma_opts,
         )
