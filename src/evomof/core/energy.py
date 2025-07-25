@@ -68,8 +68,13 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
     """
     Differentiable surrogate for frame coherence.
 
-    Defined as  (Φ_p(F))^{1/(2p)}.  As *p*→∞ this approaches a multiple of
-    the true coherence µ(F) = max_{i<j} |⟨f_i,f_j⟩|.
+    Underflow‑free evaluation of
+        (Φ_p(F))^{1/(2p)}  with  Φ_p(F) = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
+
+    We factor out the largest overlap G* to avoid |g|^{2p} underflow:
+        L = G* * ( Σ (|g_ij|/G*)^{2p} )^{1/(2p)}
+
+    As *p*→∞ this approaches a multiple of the true coherence µ(F).
 
     Raises
     ------
@@ -78,9 +83,20 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
-    phi_p = frame_potential(frame, p)
-    # Guard against numerical underflow when phi_p ≈ 0
-    return float(phi_p ** (1.0 / (2 * p))) if phi_p != 0.0 else 0.0
+
+    g_abs = _absolute_inner(frame)  # (n,n) non-negative with zero diagonal
+    g_max = float(g_abs.max())
+    if g_max == 0.0:
+        return 0.0
+
+    q = 2 * p
+    # Stable accumulation: ratios <= 1; underflow to zero is harmless.
+    ratios = g_abs / g_max
+    # Flatten upper triangle to save a bit (optional); full matrix fine too.
+    r = ratios**q
+    S = float(r.sum())
+    # The p-norm surrogate
+    return float(g_max * S ** (1.0 / q))
 
 
 def coherence(frame: Frame) -> float:
@@ -172,35 +188,41 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
 
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     """
-    Gradient of the differentiable coherence surrogate
-    :math:`(\\Phi_p(F))^{1/(2p)}`.
+    Underflow‑free gradient of the differentiable coherence surrogate
+        L_p(F) = (Φ_p(F))^{1/(2p)}  with  Φ_p = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
 
-    Parameters
-    ----------
-    frame :
-        Input frame.
-    p :
-        Same exponent used in :func:`diff_coherence`.  Large *p* makes the
-        surrogate approach the true max‑coherence while remaining smooth.
+    Using q = 2p and G* = max |⟨f_i,f_j⟩|, define r_ij = (|g_ij|/G*)^q and
+    S = Σ r_ij. Then
 
-    Raises
-    ------
-    ValueError
-        If ``p`` is not positive.
+        L_p = G* S^{1/q},
+        ∇L_p = (2 L_p / S) Σ_{j≠i} r_ij * g_ij / |g_ij|^2 f_j,
 
-    Returns
-    -------
-    Complex128Array
-        Tangent gradient array with the same shape as the frame.
+    implemented without forming |g_ij|^{q} explicitly.
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
-    phi_p = frame_potential(frame, p)
-    if phi_p == 0.0:
+
+    g = frame.gram  # complex (n,n)
+    abs_g = np.abs(g)
+    np.fill_diagonal(abs_g, 0.0)
+
+    g_max = float(abs_g.max())
+    if g_max == 0.0:
         return np.zeros_like(frame.vectors)
+
     q = 2 * p
-    scale = (phi_p ** (1.0 / q - 1)) / q
-    return typing.cast(Complex128Array, scale * grad_frame_potential(frame, p))
+    ratios = abs_g / g_max
+    r = ratios**q  # may underflow to 0 for small overlaps -> fine
+    S = float(r.sum())
+    L = g_max * S ** (1.0 / q)
+
+    # Coefficient matrix for gradient: coeff_ij = (2L/S) * r_ij * g_ij / |g_ij|^2
+    coeff = np.zeros_like(g)
+    mask = abs_g > 0
+    coeff[mask] = (2.0 * L / S) * r[mask] * g[mask] / (abs_g[mask] ** 2)
+    np.fill_diagonal(coeff, 0.0)
+    grad = coeff @ frame.vectors
+    return frame.project(grad)
 
 
 # TODO: Fix gradient for Riesz energy (fails finite-difference test)

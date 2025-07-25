@@ -54,6 +54,11 @@ TEST_CASES = [
         lambda F, p=10: grad_diff_coherence(F, p=p),
         {"p": 10},
     ),
+    (
+        lambda F, p=1000: diff_coherence(F, p=p),
+        lambda F, p=1000: grad_diff_coherence(F, p=p),
+        {"p": 1000},
+    ),
     pytest.param(
         lambda F, s=2: riesz_energy(F, s=s),
         lambda F, s=2: grad_riesz_energy(F, s=s),
