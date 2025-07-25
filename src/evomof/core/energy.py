@@ -38,7 +38,7 @@ def _absolute_inner(frame: Frame) -> Float64Array:
 
 def frame_potential(frame: Frame, p: float = 4.0) -> float:
     """
-    p‑frame potential  Φ_p(F) = Σ_{i≠j} |⟨f_i,f_j⟩|^p.
+    p‑frame potential  Φ_p(F) = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
 
     Parameters
     ----------
@@ -60,7 +60,7 @@ def frame_potential(frame: Frame, p: float = 4.0) -> float:
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
-    aij = _absolute_inner(frame) ** p
+    aij = _absolute_inner(frame) ** (2 * p)
     return float(aij.sum())
 
 
@@ -68,7 +68,7 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
     """
     Differentiable surrogate for frame coherence.
 
-    Defined as  (Φ_p(F))^{1/p}.  As *p*→∞ this approaches a multiple of
+    Defined as  (Φ_p(F))^{1/(2p)}.  As *p*→∞ this approaches a multiple of
     the true coherence µ(F) = max_{i<j} |⟨f_i,f_j⟩|.
 
     Raises
@@ -80,7 +80,7 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
         raise ValueError("Exponent p must be positive.")
     phi_p = frame_potential(frame, p)
     # Guard against numerical underflow when phi_p ≈ 0
-    return float(phi_p ** (1.0 / p)) if phi_p != 0.0 else 0.0
+    return float(phi_p ** (1.0 / (2 * p))) if phi_p != 0.0 else 0.0
 
 
 def coherence(frame: Frame) -> float:
@@ -144,7 +144,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
         The current frame :math:`F \\in (S^{2d-1})^{n}`.
     p :
         Positive exponent in the potential
-        :math:`\\Phi_p(F) = \\sum_{i\\neq j} |\\langle f_i,f_j\\rangle|^p`.
+        :math:`\\Phi_p(F) = \\sum_{i\\neq j} |\\langle f_i,f_j\\rangle|^{2p}`.
 
     Raises
     ------
@@ -162,8 +162,10 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
 
     g = frame.gram  # (n, n) complex
     abs_g = np.abs(g)
-    abs_p2 = abs_g ** (p - 2)
-    coeff = 2 * p * abs_p2 * g
+    q = 2 * p  # effective power
+    abs_pow = abs_g ** (q - 2)
+    coeff = 2 * q * abs_pow * g  # factor 2 accounts for (i,j) and (j,i) contributions
+    np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
     return frame.project(grad)
 
@@ -171,7 +173,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     """
     Gradient of the differentiable coherence surrogate
-    :math:`(\\Phi_p(F))^{1/p}`.
+    :math:`(\\Phi_p(F))^{1/(2p)}`.
 
     Parameters
     ----------
@@ -196,7 +198,8 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     phi_p = frame_potential(frame, p)
     if phi_p == 0.0:
         return np.zeros_like(frame.vectors)
-    scale = (phi_p ** (1.0 / p - 1)) / p
+    q = 2 * p
+    scale = (phi_p ** (1.0 / q - 1)) / q
     return typing.cast(Complex128Array, scale * grad_frame_potential(frame, p))
 
 
