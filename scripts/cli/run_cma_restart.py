@@ -194,7 +194,10 @@ def main() -> None:
             break
 
         # Prepare parameters for next loop
-        p_exp = min(int(1.3 * p_exp), 1350)
+        import math
+
+        print(math.ceil(1.1 * p_exp))
+        p_exp = min(math.ceil(1.1 * p_exp), 1500)
         cur_gen = int(1 * cur_gen)
         cur_sigma = cma.sigma
         cur_popsize *= 1
