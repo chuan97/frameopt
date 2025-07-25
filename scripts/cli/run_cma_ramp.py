@@ -152,7 +152,8 @@ def main() -> None:
         except Exception as e:  # pragma: no cover
             print(f"Plotting disabled (matplotlib import failed: {e})")
             plotting = False
-            fig = ax_coh = ax_sigma = line_cur = line_best = line_sigma = None  # type: ignore
+            fig = ax_coh = ax_sigma = None  # type: ignore
+            line_cur = line_best = line_sigma = None  # type: ignore
 
     t0 = time.perf_counter()
     global_best_coh = coherence(best_frame)
