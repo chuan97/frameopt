@@ -21,8 +21,9 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma import ProjectionCMA
 from evomof.optim.cma.utils import frame_to_realvec
+from evomof.optim.local import cg_minimize
 
 here = pathlib.Path(__file__).resolve().parent
 

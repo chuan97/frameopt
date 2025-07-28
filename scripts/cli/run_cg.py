@@ -19,6 +19,7 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
+from evomof.optim.local import cg_minimize
 
 
 def parse_args():

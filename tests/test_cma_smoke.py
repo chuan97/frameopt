@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from evomof.core.frame import Frame
-from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma import ProjectionCMA
 from evomof.optim.cma.utils import frame_to_realvec, realvec_to_frame
 
 

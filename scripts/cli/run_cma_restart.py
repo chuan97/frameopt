@@ -23,7 +23,7 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma import ProjectionCMA
 
 
 def parse_args() -> argparse.Namespace:

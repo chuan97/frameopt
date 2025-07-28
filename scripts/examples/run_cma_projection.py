@@ -10,7 +10,7 @@ Both use identical CMA parameters so you can compare convergence speed.
 """
 
 from evomof.core.energy import coherence, riesz_energy
-from evomof.optim.cma.projection import ProjectionCMA
+from evomof.optim.cma import ProjectionCMA
 
 # ---------------------------------------------------------------------------
 # Config
