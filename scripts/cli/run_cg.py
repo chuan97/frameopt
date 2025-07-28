@@ -19,7 +19,6 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.local.cg import polish_with_cg
 
 
 def parse_args():
@@ -90,7 +89,7 @@ def main():
 
     # 3) Run CG polish
     t0 = time.perf_counter()
-    polished = polish_with_cg(
+    polished = cg_minimize(
         frame,
         energy_fn=lambda F: diff_coherence(F, p=args.p),
         grad_fn=lambda F: grad_diff_coherence(F, p=args.p),

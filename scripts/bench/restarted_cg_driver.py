@@ -17,7 +17,6 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.local import polish_with_cg
 
 # --- Hard‑coded parameters ---------------------------------------------------
 N_STARTS = 1
@@ -34,7 +33,7 @@ best_frame: Frame | None = None
 for seed in range(N_STARTS):
     rng = np.random.default_rng()
     frame0 = Frame.random(N, D, rng=rng)
-    polished = polish_with_cg(
+    polished = cg_minimize(
         frame0,
         energy_fn=lambda F: diff_coherence(F, p=P_EXP),
         grad_fn=lambda F: grad_diff_coherence(F, p=P_EXP),

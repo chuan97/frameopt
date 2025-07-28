@@ -23,7 +23,6 @@ from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
 from evomof.optim.cma.utils import frame_to_realvec
-from evomof.optim.local import polish_with_cg
 
 here = pathlib.Path(__file__).resolve().parent
 
@@ -135,7 +134,7 @@ def main() -> None:
         if args.cg_run_every and gen % args.cg_run_every == 0:
             # Polish current best individual
             cg_start = time.perf_counter()
-            polished = polish_with_cg(
+            polished = cg_minimize(
                 best_frame,
                 energy_fn=lambda F: diff_coherence(F, p=args.p),
                 grad_fn=lambda F: grad_diff_coherence(F, p=args.p),

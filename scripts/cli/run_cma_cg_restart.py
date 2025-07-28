@@ -33,7 +33,6 @@ import numpy as np
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma.projection import ProjectionCMA
-from evomof.optim.local import polish_with_cg
 
 
 # --------------------------------------------------------------------- CLI
@@ -76,7 +75,7 @@ def parse_args() -> argparse.Namespace:
         "--cg-tol",
         type=float,
         default=1e-8,
-        help="Energy tolerance for early CG stop (passed to polish_with_cg)",
+        help="Energy tolerance for early CG stop (passed to cg_minimize)",
     )
 
     # loop control
@@ -266,7 +265,7 @@ def main() -> None:
         # --- CG polish ---------------------------------------------------
         energy_before_cg = best_energy
         cg_start = time.perf_counter()
-        polished = polish_with_cg(
+        polished = cg_minimize(
             best_frame,
             energy_fn=lambda F: diff_coherence(F, p=args.p),
             grad_fn=lambda F: grad_diff_coherence(F, p=args.p),

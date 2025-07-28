@@ -28,7 +28,6 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.local import polish_with_cg
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,7 +173,7 @@ def main() -> None:
 
         # Run CG for this chunk
         t_chunk0 = time.perf_counter()
-        frame = polish_with_cg(
+        frame = cg_minimize(
             frame,
             energy_fn=E,
             grad_fn=G,
