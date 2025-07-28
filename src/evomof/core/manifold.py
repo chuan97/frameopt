@@ -141,7 +141,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         float
-            ⟨U, V⟩ₓ.
+            Re⟨U, V⟩ₓ.
         """
         return float(np.real(np.sum(U.conj() * V)))
 
