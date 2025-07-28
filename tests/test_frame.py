@@ -21,9 +21,7 @@ def test_log_retract_inverse():
     rng = np.random.default_rng(2)
     f1 = Frame.random(8, 4, rng=rng)
     tang = 1e-3 * rng.standard_normal(f1.shape) + 1e-3j * rng.standard_normal(f1.shape)
-    tang -= (
-        np.einsum("nd,nd->n", tang.conj(), f1.vectors)[:, None] * f1.vectors
-    )  # tangent
+    tang = f1.project(tang)
     f2 = f1.retract(tang)
     ξ = f1.log_map(f2)
     f3 = f1.retract(ξ)
@@ -35,9 +33,8 @@ def test_log_retract_large_angle():
 
     # Build a deterministic tangent: swap real/imag, project, normalise.
     swaps = 1j * f1.vectors  # swap real<->imag parts; certainly not collinear
-    swaps -= np.einsum("nd,nd->n", swaps.conj(), f1.vectors)[:, None] * f1.vectors
-    tang = swaps / np.linalg.norm(swaps, axis=1, keepdims=True)
-    tang *= 1.0  # 1-radian step
+    tang = f1.project(swaps)
+    tang /= np.linalg.norm(swaps, axis=1, keepdims=True)
 
     f2 = f1.retract(tang)
     xi = f1.log_map(f2)
@@ -62,3 +59,16 @@ def test_project_tangent():
     # 2. Tangency: full row‑wise inner products must vanish.
     radial = np.sum(f.vectors.conj() * proj, axis=1)
     np.testing.assert_allclose(radial, 0.0 + 0.0j, atol=1e-12)
+
+
+def test_project_kills_radial_and_phase():
+    rng = np.random.default_rng(0)
+    f = Frame.random(5, 3, rng=rng)
+
+    # Radial direction projects to zero
+    radial = f.vectors.copy()
+    np.testing.assert_allclose(f.project(radial), 0.0, atol=1e-12)
+
+    # Phase (vertical) direction projects to zero
+    vertical = 1j * f.vectors
+    np.testing.assert_allclose(f.project(vertical), 0.0, atol=1e-12)
