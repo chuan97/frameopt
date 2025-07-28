@@ -153,7 +153,7 @@ class Frame:
         return typing.cast(Complex128Array, arr - radial * self.vectors)
 
     # -------------------------------------------------------------- #
-    # Manifold operations (sphere product ≅ CP^{d-1})               #
+    # Manifold operations (sphere product ≅ CP^{d-1})                #
     # -------------------------------------------------------------- #
 
     def retract(self, tang: np.ndarray) -> "Frame":
