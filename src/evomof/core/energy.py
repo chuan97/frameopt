@@ -108,48 +108,6 @@ def coherence(frame: Frame) -> float:
     return float(_absolute_inner(frame).max())
 
 
-def riesz_energy(frame: Frame, s: float = 2.0, eps: float = 1e-12) -> float:
-    r"""
-    Riesz *s*‑energy (p‑design surrogate).
-
-    Parameters
-    ----------
-    frame :
-        Input frame.
-    s :
-        Positive exponent.  Common choices: s = 1, 2, 4 …
-    eps :
-        Minimum chordal distance used to clamp nearly‑parallel pairs.  Values
-        smaller than *eps* are replaced by *eps* to avoid numerical overflow
-        in ``dist**(-s)`` when two vectors align.
-
-    Raises
-    ------
-    ValueError
-        If ``s`` is not positive.
-
-    Returns
-    -------
-    float
-        Riesz energy.
-    """
-    if s <= 0:
-        raise ValueError("Exponent s must be positive.")
-
-    # Pair‑wise chordal distances (n, n), zero on diagonal
-    dist = frame.chordal_distances()
-
-    # Extract upper‑triangle (k=1) and leverage symmetry by doubling.
-    i, j = np.triu_indices_from(dist, k=1)
-    dist_sub = dist[i, j]
-
-    # Clamp to avoid division by zero / overflow for nearly‑parallel vectors
-    dist_sub = np.maximum(dist_sub, eps)
-
-    energy_half = np.sum(dist_sub ** (-s))
-    return float(2.0 * energy_half)
-
-
 def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     """
     Analytic Riemannian gradient of the *p*-frame potential.
@@ -222,62 +180,4 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     coeff[mask] = (2.0 * L / S) * r[mask] * g[mask] / (abs_g[mask] ** 2)
     np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
-    return frame.project(grad)
-
-
-# TODO: Fix gradient for Riesz energy (fails finite-difference test)
-# See issue #1
-def grad_riesz_energy(
-    frame: Frame, s: float = 2.0, eps: float = 1e-12
-) -> Complex128Array:
-    """
-    Analytic gradient of the Riesz *s*-energy on the product sphere.
-
-    For each unordered pair ``(i,j)`` the contribution is
-
-    .. math::
-
-        -\\frac{s}{\\|f_i - f_j\\|^{s+2}}\\,(f_i - f_j),
-
-    projected onto the tangent space.
-
-    Parameters
-    ----------
-    frame :
-        Input frame.
-    s :
-        Positive Riesz exponent.
-    eps :
-        Clamp for very small chordal distances to avoid overflow
-        (must match the value used in :func:`riesz_energy`).
-
-    Raises
-    ------
-    ValueError
-        If ``s`` is not positive.
-
-    Returns
-    -------
-    Complex128Array
-        Tangent gradient array.
-    """
-    # Compute all chordal distances and index upper triangle
-    dist = frame.chordal_distances()
-    i, j = np.triu_indices_from(dist, k=1)
-    # Clamp distances for safety
-    dist_sub = np.maximum(dist[i, j], eps)
-
-    # Precompute inner products
-    g = frame.gram  # complex array of shape (n,n)
-    # The derivative factor: 4 * s * dist^{-s-2}
-    coeff = 4 * s * dist_sub ** (-(s + 2))
-
-    # Accumulate Euclidean gradient
-    grad = np.zeros_like(frame.vectors)
-    for idx_i, idx_j, c, w in zip(i, j, g[i, j], coeff, strict=False):
-        # Contribution from |<f_i, f_j>|^2 dependence
-        grad[idx_i] += w * np.conj(c) * frame.vectors[idx_j]
-        grad[idx_j] += w * c * frame.vectors[idx_i]
-
-    # Project onto tangent space
     return frame.project(grad)

@@ -7,8 +7,6 @@ from evomof.core.energy import (
     frame_potential,
     grad_diff_coherence,
     grad_frame_potential,
-    grad_riesz_energy,
-    riesz_energy,
 )
 from evomof.core.frame import Frame
 
@@ -31,8 +29,6 @@ def main():
         ("Grad FP", timed(grad_frame_potential, F)),
         ("Diff. coherence", timed(diff_coherence, F)),
         ("Grad DC", timed(grad_diff_coherence, F)),
-        ("Riesz energy", timed(riesz_energy, F)),
-        ("Grad Riesz", timed(grad_riesz_energy, F)),
     ]
 
     print("=== Quick Benchmark (ms per call) ===")

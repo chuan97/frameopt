@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from evomof.core.energy import coherence, diff_coherence, frame_potential, riesz_energy
+from evomof.core.energy import coherence, diff_coherence, frame_potential
 from evomof.core.frame import Frame
 
 # ---------------------------------------------------------------------
@@ -57,17 +57,6 @@ def test_diff_coherence_high_p_no_underflow(random_frame: Frame) -> None:
     assert val > 0.0
     # Within 0.1% relative error of true coherence
     assert abs(val - mu) / mu < 1e-3
-
-
-def test_riesz_energy_clamp(random_frame: Frame) -> None:
-    """
-    Riesz energy must remain finite even with identical rows,
-    thanks to the eps clamp.
-    """
-    duplicate = random_frame.copy()
-    duplicate.vectors[0] = duplicate.vectors[1]  # make two rows identical
-    energy = riesz_energy(duplicate, s=2, eps=1e-6)
-    assert np.isfinite(energy)
 
 
 def test_diff_coherence_multiple_maxima() -> None:
