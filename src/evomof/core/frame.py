@@ -133,10 +133,10 @@ class Frame:
         Orthogonally project an ambient array onto the tangent space
         at this frame.
 
-        For each row ``i`` the projection subtracts the real part of the
+        For each row ``i`` the projection subtracts the
         inner product with the base vector so that the result satisfies
 
-        ``Re⟨f_i, ξ_i⟩ = 0``.
+        ``⟨f_i, ξ_i⟩ = 0``.
 
         Parameters
         ----------
@@ -149,8 +149,8 @@ class Frame:
         Complex128Array
             Tangent array of the same shape as the frame.
         """
-        radial = np.real(np.sum(arr.conj() * self.vectors, axis=1, keepdims=True))
-        return typing.cast(Complex128Array, arr - radial * self.vectors)
+        inner = np.sum(self.vectors.conj() * arr, axis=1, keepdims=True)
+        return typing.cast(Complex128Array, arr - inner * self.vectors)
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})                #

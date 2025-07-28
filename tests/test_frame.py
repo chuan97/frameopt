@@ -47,7 +47,7 @@ def test_log_retract_large_angle():
 
 
 def test_project_tangent():
-    """`Frame.project` should return a tangent vector: Re⟨f_i,ξ_i⟩ = 0."""
+    """`Frame.project` should return a tangent vector: ⟨f_i,ξ_i⟩ = 0."""
     rng = np.random.default_rng(5)
     f = Frame.random(6, 3, rng=rng)
 
@@ -59,6 +59,6 @@ def test_project_tangent():
     # 1. Shape consistency
     assert proj.shape == f.shape
 
-    # 2. Tangency: real part of row‑wise inner products must vanish.
-    radial = np.real(np.sum(proj.conj() * f.vectors, axis=1))
-    np.testing.assert_allclose(radial, 0.0, atol=1e-12)
+    # 2. Tangency: full row‑wise inner products must vanish.
+    radial = np.sum(f.vectors.conj() * proj, axis=1)
+    np.testing.assert_allclose(radial, 0.0 + 0.0j, atol=1e-12)
