@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
 import time
 
 import numpy as np
@@ -27,6 +26,7 @@ import numpy as np
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
+from evomof.optim.utils.p_scheduler import PScheduler
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
         help="Multiplier applied to p at each switch step",
     )
     p.add_argument(
-        "--p-max", type=float, default=1e9, help="Maximum p exponent (cap after ramp)"
+        "--p-max", type=float, default=1e12, help="Maximum p exponent (cap after ramp)"
     )
     p.add_argument(
         "--switch-every",
@@ -108,7 +108,14 @@ def main() -> None:
         popsize = args.popsize
 
     # CMA initialisation (energy kwargs will be updated as p changes)
-    p_exp = args.p0
+    sched = PScheduler(
+        mode="adaptive",
+        p0=args.p0,
+        p_mult=args.p_mult,
+        p_max=args.p_max,
+        switch_every=(args.switch_every if args.switch_every > 0 else None),
+    )
+    p_exp = sched.current_p()
     cma = ProjectionCMA(
         n=args.n,
         d=args.d,
@@ -161,23 +168,6 @@ def main() -> None:
 
     # Main CMA loop
     for gen in range(1, args.gen + 1):
-        # Ramp p if schedule triggers (skip at gen=1 to keep initial p0)
-        if (
-            args.switch_every > 0
-            and gen > 1
-            and gen % args.switch_every == 0
-            and p_exp < args.p_max
-        ):
-            old_p = p_exp
-            p_exp = min(math.ceil(p_exp * args.p_mult), args.p_max)
-            print(f"[p-ramp] Generation {gen}: p {old_p:g} -> {p_exp:g}")
-            # Re-evaluate best_energy under new p for consistent logging
-            best_energy = diff_coherence(best_frame, p=p_exp)
-            if plotting:
-                # Mark p increase with a vertical line on both subplots
-                ax_coh.axvline(gen, color="gray", linestyle="--", alpha=0.5)
-                ax_sigma.axvline(gen, color="gray", linestyle="--", alpha=0.5)
-
         population = cma.ask()
         # Evaluate with current p exponent
         energies = [diff_coherence(f, p=p_exp) for f in population]
@@ -234,6 +224,20 @@ def main() -> None:
             import matplotlib.pyplot as plt  # type: ignore
 
             plt.pause(0.001)
+
+        # Decide p ramp for the *next* generation using the scheduler
+        p_next, switched = sched.update(
+            step=gen,
+            global_best_coh=global_best_coh,
+        )
+        if switched:
+            print(f"[p-ramp] Generation {gen}: p {p_exp:g} -> {p_next:g}")
+            # Re-evaluate best_energy under new p for consistent next-gen logging
+            best_energy = diff_coherence(best_frame, p=p_next)
+            if plotting:
+                ax_coh.axvline(gen, color="gray", linestyle="--", alpha=0.5)
+                ax_sigma.axvline(gen, color="gray", linestyle="--", alpha=0.5)
+        p_exp = p_next
 
         # Light console feedback (10% intervals)
         if gen % max(args.gen // 10, 1) == 0:
