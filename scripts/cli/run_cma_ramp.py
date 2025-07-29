@@ -104,7 +104,7 @@ def main() -> None:
 
     # CMA initialisation (energy kwargs will be updated as p changes)
     sched = PScheduler(
-        mode="fixed",
+        mode="adaptive",
         p0=args.p0,
         p_mult=args.p_mult,
         p_max=args.p_max,
