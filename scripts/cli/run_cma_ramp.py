@@ -104,11 +104,12 @@ def main() -> None:
 
     # CMA initialisation (energy kwargs will be updated as p changes)
     sched = PScheduler(
-        mode="adaptive",
+        mode="fixed",
         p0=args.p0,
         p_mult=args.p_mult,
         p_max=args.p_max,
         switch_every=(args.switch_every if args.switch_every > 0 else None),
+        total_steps=args.gen,
     )
     p_exp = sched.current_p()
     cma = ProjectionCMA(
