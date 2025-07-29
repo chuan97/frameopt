@@ -12,10 +12,10 @@ supports live plotting, and can start from a random frame or from an input .npy 
 Examples
 --------
 $ python scripts/cli/run_cg_ramp.py -n 30 -d 4 --iters 2000 --p0 2 --p-mult 1.5 \
-      --switch-every 200 --p-max 2048 --plot
+      --switch-every 200 --p-max 2048
 
 $ python scripts/cli/run_cg_ramp.py -n 32 -d 6 --init-npy seed_frame.npy --iters 3000 \
-      --p0 2 --p-mult 1.25 --switch-every 300 --plot --log-file cg_ramp.csv
+      --p0 2 --p-mult 1.25 --switch-every 300 --log-file cg_ramp.csv
 """
 from __future__ import annotations
 
@@ -76,27 +76,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Save final best frame as submission .txt",
     )
-    p.add_argument(
-        "--plot", action="store_true", help="Live plot: coherence and global best"
-    )
     return p.parse_args()
-
-
-def load_init_frame(path: Path, n: int, d: int) -> Frame:
-    arr = np.load(path, allow_pickle=False)
-    if arr.shape == (n, d):
-        pass
-    elif arr.shape == (d, n):
-        arr = arr.T
-        print("[init] Loaded (d,n) array; transposed to (n,d).")
-    else:
-        raise ValueError(
-            f"Loaded array has shape {arr.shape}, expected (n,d)=({n},{d}) or (d,n)=({d},{n})."
-        )
-    # Ensure complex dtype (project uses complex arithmetic)
-    if not np.iscomplexobj(arr):
-        arr = arr.astype(np.complex128)
-    return Frame.from_array(arr, copy=False)
 
 
 def main() -> None:
@@ -108,7 +88,7 @@ def main() -> None:
         init_path = Path(args.init_npy)
         if not init_path.exists():
             raise FileNotFoundError(f"init-npy not found: {init_path}")
-        frame = load_init_frame(init_path, args.n, args.d)
+        frame = Frame.load_npy(init_path)
         print(f"[init] Using provided frame from {init_path}")
     else:
         frame = Frame.random(args.n, args.d, rng=rng)
@@ -122,26 +102,6 @@ def main() -> None:
 
     # p ramp state
     p_exp = float(args.p0)
-
-    # Live plotting state
-    plotting = False
-    if args.plot:
-        try:
-            import matplotlib.pyplot as plt  # type: ignore
-
-            plt.ion()
-            plotting = True
-            fig, ax_coh = plt.subplots(1, 1, figsize=(8, 4))
-            (line_cur,) = ax_coh.plot([], [], lw=2, label="Chunk-end coherence")
-            (line_best,) = ax_coh.plot([], [], lw=2, label="Global best coherence")
-            ax_coh.set_xlabel("CG iterations (cumulative)")
-            ax_coh.set_ylabel("Coherence")
-            ax_coh.set_title("CG with p-ramp")
-            ax_coh.legend()
-        except Exception as e:  # pragma: no cover
-            print(f"Plotting disabled (matplotlib import failed: {e})")
-            plotting = False
-            fig = ax_coh = line_cur = line_best = None  # type: ignore
 
     # Histories
     coh_history: list[float] = []
@@ -209,16 +169,6 @@ def main() -> None:
         coh_history.append(cur_coh)
         best_history.append(best_coh)
 
-        if plotting:
-            line_cur.set_data(iter_history, coh_history)
-            line_best.set_data(iter_history, best_history)
-            ax_coh.relim()
-            ax_coh.autoscale_view()
-            fig.canvas.draw_idle()  # type: ignore
-            import matplotlib.pyplot as plt  # type: ignore
-
-            plt.pause(0.001)
-
         # p-ramp: increase p for next chunk
         if (
             args.switch_every
@@ -229,10 +179,6 @@ def main() -> None:
             old_p = p_exp
             p_exp = min(p_exp * args.p_mult, args.p_max)
             print(f"[p-ramp] after {it_cum} iters: p {old_p:g} -> {p_exp:g}")
-            if plotting:
-                # vertical marker at this chunk boundary
-                ax_coh.axvline(it_cum, color="gray", linestyle="--", alpha=0.5)
-                fig.canvas.draw_idle()  # type: ignore
 
         # Console progress (every ~10% of budget)
         if len(iter_history) == 1 or it_cum >= (
@@ -262,12 +208,6 @@ def main() -> None:
     if args.export_txt:
         best_frame.export_txt(args.export_txt)
         print(f"Saved best frame to .txt → {args.export_txt}")
-
-    if plotting:
-        import matplotlib.pyplot as plt  # type: ignore
-
-        plt.ioff()
-        plt.show()
 
 
 if __name__ == "__main__":  # pragma: no cover

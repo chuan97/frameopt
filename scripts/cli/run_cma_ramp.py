@@ -13,7 +13,7 @@ coherence, and sigma over time.
 Example
 -------
 $ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --p0 2 --p-mult 1.5 \
-      --switch-every 200 --p-max 80 --plot
+      --switch-every 200 --p-max 80 
 """
 from __future__ import annotations
 
@@ -82,11 +82,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Save final best frame as .txt submission",
     )
-    p.add_argument(
-        "--plot",
-        action="store_true",
-        help="Show dynamic plot of coherence/sigma across generations",
-    )
     return p.parse_args()
 
 
@@ -109,7 +104,7 @@ def main() -> None:
 
     # CMA initialisation (energy kwargs will be updated as p changes)
     sched = PScheduler(
-        mode="adaptive",
+        mode="fixed",
         p0=args.p0,
         p_mult=args.p_mult,
         p_max=args.p_max,
@@ -131,36 +126,6 @@ def main() -> None:
     best_energy = diff_coherence(best_frame, p=p_exp)
 
     metrics: list[dict] = []
-
-    # ----- Optional dynamic plotting -------------------------------------
-    coh_history: list[float] = []  # generation best
-    global_best_history: list[float] = []  # global best coherence
-    sigma_history: list[float] = []
-    p_history: list[float] = []
-
-    plotting = False
-    if args.plot:
-        try:
-            import matplotlib.pyplot as plt  # type: ignore
-
-            plt.ion()
-            plotting = True
-            fig, (ax_coh, ax_sigma) = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
-            (line_cur,) = ax_coh.plot([], [], lw=2, label="Generation best coherence")
-            (line_best,) = ax_coh.plot([], [], lw=2, label="Global best coherence")
-            (line_sigma,) = ax_sigma.plot([], [], lw=2, label="Sigma")
-            ax_coh.set_ylabel("Coherence")
-            ax_coh.set_title("CMA with p-ramp")
-            ax_coh.legend()
-            ax_sigma.set_ylabel("Sigma")
-            ax_sigma.set_xlabel("Generation")
-            ax_sigma.axhline(0.0, color="black", linewidth=2.0, alpha=0.6)
-            ax_sigma.legend()
-        except Exception as e:  # pragma: no cover
-            print(f"Plotting disabled (matplotlib import failed: {e})")
-            plotting = False
-            fig = ax_coh = ax_sigma = None  # type: ignore
-            line_cur = line_best = line_sigma = None  # type: ignore
 
     t0 = time.perf_counter()
     global_best_coh = coherence(best_frame)
@@ -206,25 +171,6 @@ def main() -> None:
             }
         )
 
-        # Update dynamic plot
-        if plotting:
-            coh_history.append(gen_best_coh)
-            global_best_history.append(global_best_coh)
-            sigma_history.append(cma.sigma)
-            p_history.append(p_exp)
-            line_cur.set_data(range(1, gen + 1), coh_history)
-            line_best.set_data(range(1, gen + 1), global_best_history)
-            line_sigma.set_data(range(1, gen + 1), sigma_history)
-            ax_coh.relim()
-            ax_coh.autoscale_view()
-            ax_sigma.relim()
-            ax_sigma.autoscale_view()
-            ax_sigma.set_xlim(left=1, right=gen + 1)
-            fig.canvas.draw_idle()  # type: ignore
-            import matplotlib.pyplot as plt  # type: ignore
-
-            plt.pause(0.001)
-
         # Decide p ramp for the *next* generation using the scheduler
         p_next, switched = sched.update(
             step=gen,
@@ -234,9 +180,7 @@ def main() -> None:
             print(f"[p-ramp] Generation {gen}: p {p_exp:g} -> {p_next:g}")
             # Re-evaluate best_energy under new p for consistent next-gen logging
             best_energy = diff_coherence(best_frame, p=p_next)
-            if plotting:
-                ax_coh.axvline(gen, color="gray", linestyle="--", alpha=0.5)
-                ax_sigma.axvline(gen, color="gray", linestyle="--", alpha=0.5)
+
         p_exp = p_next
 
         # Light console feedback (10% intervals)
@@ -266,12 +210,6 @@ def main() -> None:
     if args.export_txt:
         global_best_frame.export_txt(args.export_txt)
         print(f"Saved final frame to .txt → {args.export_txt}")
-
-    if plotting:
-        import matplotlib.pyplot as plt  # type: ignore
-
-        plt.ioff()
-        plt.show()
 
 
 if __name__ == "__main__":  # pragma: no cover
