@@ -192,7 +192,7 @@ def main() -> None:
     runtime = time.perf_counter() - t0
     print(
         f"Finished {args.gen} generations in {runtime:.2f}s | final p={p_exp:g} | "
-        f"best diff-coh (current p) {best_energy:.6e} | global best coherence {global_best_coh:.8f}"
+        f"best diff-coh (current p) {best_energy:.6e} | global best coherence {global_best_coh:.10f}"
     )
 
     # Write CSV if requested
