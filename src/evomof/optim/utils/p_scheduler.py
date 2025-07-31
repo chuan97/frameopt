@@ -7,7 +7,8 @@ We expose a small interface via a typing.Protocol:
 
     class Scheduler(Protocol):
         def current_p(self) -> float: ...
-        def update(self, *, step: int, global_best_coh: float) -> tuple[float, bool]: ...
+        def update(self, *, step: int, global_best_coh: float)
+            -> tuple[float, bool]: ...
 
 Two concrete implementations satisfy the protocol:
 
@@ -58,7 +59,8 @@ class Scheduler(Protocol):
         Returns
         -------
         (p, switched) : tuple[float, bool]
-            Updated p to use for the *next* step and a flag indicating whether a ramp occurred.
+            Updated p to use for the *next* step and a flag indicating whether
+            a ramp occurred.
         """
         ...
 
@@ -92,13 +94,15 @@ class FixedPScheduler:
     """
 
     p0: float = 2.0
-    p_mult: float = 1.1
+    p_mult: float = 1.5
     p_max: float = 1e9
     switch_every: int | None = 200
 
     # state
     p: float = field(init=False)
-    last_switch_step: int = 0
+    # Intitialize to 1 so the first ramp occurs at step ( 1 + switch_every)
+    # and the value returned by update() at that step is the new p
+    last_switch_step: int = 1
 
     def __post_init__(self) -> None:
         self.p = float(self.p0)
