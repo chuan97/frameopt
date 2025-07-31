@@ -74,7 +74,9 @@ class ExperimentConfig:
     seeds: Dict[str, Any]  # {"list":[...]} OR {"count":int, "start":int}
     logging: Dict[str, Any] | None = None  # {"save_metrics": bool}
     exports: Dict[str, Any] | None = None  # {"save_npy": bool, "save_txt": bool}
-    certify: Dict[str, Any] | None = None  # {"enabled": bool, "mp_dps": int, "mp_topk": int}
+    certify: Dict[str, Any] | None = (
+        None  # {"enabled": bool, "mp_dps": int, "mp_topk": int}
+    )
 
     @staticmethod
     def load(path: Path) -> "ExperimentConfig":
@@ -211,6 +213,98 @@ def _build_cmd(
     return cmd
 
 
+def _run_verifier(
+    *,
+    npy_path: Path,
+    verify_cli: Path,
+    repo_root: Path,
+    log_path: Path,
+    seed: int,
+    mp_dps: int | None,
+    mp_topk: int | None,
+) -> tuple[Path | None, float | None, str]:
+    """
+    Run verify_frame.py on `npy_path`, write JSON next to it, and return:
+      (certificate_path_or_None, numeric_best_coh_or_None, best_coh_8dp_string_or_empty)
+
+    Prints concise [ver]/[cmd-ver] messages to console and appends detailed logs to `run.log`.
+    Falls back to float64 verification if mpmath is unavailable or the high-precision run fails.
+    """
+    if not npy_path.exists():
+        print(f"[ver] seed={seed} | best_frame.npy not found; skipping verification")
+        return None, None, ""
+    print(f"[ver] seed={seed} → verify {npy_path.name}")
+
+    # Build verifier command
+    vcmd = [sys.executable, str(verify_cli), str(npy_path), "--json"]
+
+    # Determine whether to use high precision
+    want_mp = isinstance(mp_dps, int) and mp_dps > 0
+    have_mp = False
+    if want_mp:
+        try:
+            importlib.import_module("mpmath")
+            have_mp = True
+        except Exception:
+            have_mp = False
+            print(f"[ver] seed={seed} | mpmath not available; will verify in float64")
+    if have_mp:
+        vcmd += ["--mp-dps", str(int(mp_dps))]  # type: ignore[arg-type]
+        if isinstance(mp_topk, int) and mp_topk >= 0:
+            vcmd += ["--mp-topk", str(int(mp_topk))]
+
+    # Echo and run
+    print(f"[cmd-ver] {' '.join(vcmd)}")
+    with log_path.open("a") as logf:
+        logf.write("\n[verify] running verify_frame.py\n")
+        logf.write(f"[verify] cmd: {' '.join(vcmd)}\n")
+        rc_v = subprocess.call(
+            vcmd, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root)
+        )
+        logf.write(f"[verify] return_code={rc_v}\n")
+
+    # If high-precision attempt failed, retry once without mp flags
+    if rc_v != 0 and have_mp and "--mp-dps" in vcmd:
+        vcmd_fallback = [sys.executable, str(verify_cli), str(npy_path), "--json"]
+        with log_path.open("a") as logf:
+            logf.write("[verify] retry without mpmath flags\n")
+            logf.write(f"[verify] cmd: {' '.join(vcmd_fallback)}\n")
+            rc_v2 = subprocess.call(
+                vcmd_fallback, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root)
+            )
+            logf.write(f"[verify] return_code={rc_v2}\n")
+        if rc_v2 == 0:
+            print(f"[ver] seed={seed} | fallback float64 verification succeeded")
+            rc_v = 0
+        else:
+            print(f"[ver] seed={seed} | fallback verifier also failed (rc={rc_v2})")
+
+    # Parse certificate JSON
+    cert_path = npy_path.with_name(f"{npy_path.stem}_certificate.json")
+    if not cert_path.exists():
+        print(f"[ver] seed={seed} | certificate not found (expected {cert_path.name})")
+        return None, None, ""
+    try:
+        cert = json.loads(cert_path.read_text())
+    except Exception as e:
+        print(f"[ver] seed={seed} | failed to parse certificate JSON: {e}")
+        return cert_path, None, ""
+    # prefer high-precision coherence if available
+    coh_num = cert.get("coherence_mpmath", None)
+    if coh_num is None:
+        coh_num = cert.get("coherence_float64", None)
+    coh8 = cert.get("coherence_mpmath_8dp", None) or cert.get(
+        "coherence_float64_8dp", ""
+    )
+    if coh8:
+        print(f"[ver] seed={seed} | coherence_8dp={coh8}")
+    return (
+        cert_path,
+        (float(coh_num) if isinstance(coh_num, (int, float)) else None),
+        (coh8 if isinstance(coh8, str) else ""),
+    )
+
+
 def main() -> None:
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
@@ -281,81 +375,28 @@ def main() -> None:
             )
         )
 
-        # Optional certification step: run verify_frame.py to produce JSON certificate next to the frame
+        # Optional certification step
         cert_json_rel = ""
         coh8 = ""
         if cfg.certify and bool(cfg.certify.get("enabled", False)):
-            npy_path = run_dir / "best_frame.npy"
-            if npy_path.exists():
-                # Console notice for verifier
-                print(f"[ver] seed={seed} → verify {npy_path.name}")
-                # Build verifier command
-                vcmd = [sys.executable, str(verify_cli), str(npy_path), "--json"]
-                mp_dps = cfg.certify.get("mp_dps")
-                mp_topk = cfg.certify.get("mp_topk")
-                want_mp = isinstance(mp_dps, int) and mp_dps > 0
-                have_mp = False
-                if want_mp:
-                    try:
-                        importlib.import_module("mpmath")
-                        have_mp = True
-                    except Exception:
-                        have_mp = False
-                        print(f"[ver] seed={seed} | mpmath not available; will verify in float64")
-                if have_mp:
-                    vcmd += ["--mp-dps", str(int(mp_dps))]
-                    if isinstance(mp_topk, int) and mp_topk >= 0:
-                        vcmd += ["--mp-topk", str(int(mp_topk))]
-
-                # Echo verifier command to console for visibility
-                print(f"[cmd-ver] {' '.join(vcmd)}")
-                # Append verifier output to the same log and run
-                with log_path.open("a") as logf:
-                    logf.write("\n[verify] running verify_frame.py\n")
-                    logf.write(f"[verify] cmd: {' '.join(vcmd)}\n")
-                    rc_v = subprocess.call(vcmd, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root))
-                    logf.write(f"[verify] return_code={rc_v}\n")
-                if rc_v != 0:
-                    print(f"[ver] seed={seed} | verifier exited with rc={rc_v}")
-                    # If we asked for mpmath, try once more without high-precision flags
-                    if have_mp and "--mp-dps" in vcmd:
-                        vcmd_fallback = [sys.executable, str(verify_cli), str(npy_path), "--json"]
-                        with log_path.open("a") as logf:
-                            logf.write("[verify] retry without mpmath flags\n")
-                            logf.write(f"[verify] cmd: {' '.join(vcmd_fallback)}\n")
-                            rc_v2 = subprocess.call(vcmd_fallback, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root))
-                            logf.write(f"[verify] return_code={rc_v2}\n")
-                        if rc_v2 == 0:
-                            print(f"[ver] seed={seed} | fallback float64 verification succeeded")
-                            rc_v = 0
-                        else:
-                            print(f"[ver] seed={seed} | fallback verifier also failed (rc={rc_v2})")
-
-                # Read certificate JSON if created
-                cert_path = run_dir / f"{npy_path.stem}_certificate.json"
-                if cert_path.exists():
-                    cert_json_rel = str(cert_path.relative_to(out_root))
-                    try:
-                        cert = json.loads(cert_path.read_text())
-                        # prefer high-precision coherence if available
-                        coh_num = cert.get("coherence_mpmath", None)
-                        if coh_num is None:
-                            coh_num = cert.get("coherence_float64", None)
-                        coh8 = cert.get("coherence_mpmath_8dp", None) or cert.get("coherence_float64_8dp", "")
-                        # track best across seeds
-                        if isinstance(coh_num, (int, float)):
-                            if best_coh_num is None or float(coh_num) < best_coh_num:
-                                best_coh_num = float(coh_num)
-                                best_seed = seed
-                                best_coh_8dp = coh8 if isinstance(coh8, str) else None
-                        if coh8:
-                            print(f"[ver] seed={seed} | coherence_8dp={coh8}")
-                    except Exception as e:
-                        print(f"[ver] seed={seed} | failed to parse certificate JSON: {e}")
-                else:
-                    print(f"[ver] seed={seed} | certificate not found (expected {cert_path.name})")
-            else:
-                print(f"[ver] seed={seed} | best_frame.npy not found; skipping verification")
+            mp_dps = cfg.certify.get("mp_dps")
+            mp_topk = cfg.certify.get("mp_topk")
+            cert_path, coh_num, coh8 = _run_verifier(
+                npy_path=run_dir / "best_frame.npy",
+                verify_cli=verify_cli,
+                repo_root=repo_root,
+                log_path=log_path,
+                seed=seed,
+                mp_dps=(int(mp_dps) if isinstance(mp_dps, int) else None),
+                mp_topk=(int(mp_topk) if isinstance(mp_topk, int) else None),
+            )
+            if cert_path:
+                cert_json_rel = str(cert_path.relative_to(out_root))
+            if isinstance(coh_num, (int, float)):
+                if best_coh_num is None or float(coh_num) < best_coh_num:
+                    best_coh_num = float(coh_num)
+                    best_seed = seed
+                    best_coh_8dp = coh8 or best_coh_8dp
 
         summary_rows.append(
             {
