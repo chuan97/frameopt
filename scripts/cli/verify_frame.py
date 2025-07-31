@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+"""
+Verify a frame's coherence from a .npy file.
+
+This tool loads a real/complex frame array of shape (n, d), renormalizes rows to
+unit ℓ2 norm, computes the maximum off‑diagonal absolute inner product (the
+coherence) in float64 and, optionally, in high precision via mpmath. It prints a
+human‑readable summary (including top‑K pairs and simple statistics) and can
+optionally write a JSON certificate next to the input file.
+
+Notes:
+  • Only .npy inputs are supported (submission .txt is intentionally not supported here).
+  • High‑precision verification is optional and used when --mp-dps > 0.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,6 +29,7 @@ except Exception:
 
 
 def sha256_file(path: Path) -> str:
+    """Return the SHA‑256 hex digest of the file contents at `path`."""
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -28,8 +42,17 @@ def sha256_file(path: Path) -> str:
 
 def load_frame(path: Path) -> np.ndarray:
     """
-    Load a frame from .npy only.
-    - .npy: expects (n, d) shaped array, real or complex.
+    Load a frame from a .npy file.
+
+    Parameters
+    ----------
+    path : Path
+        Path to a NumPy `.npy` file containing a 2‑D array of shape (n, d), real or complex.
+
+    Returns
+    -------
+    np.ndarray
+        Array with dtype complex128 and shape (n, d). Values are not modified beyond dtype casting.
     """
     suffix = path.suffix.lower()
     if suffix != ".npy":
@@ -43,6 +66,12 @@ def load_frame(path: Path) -> np.ndarray:
 
 
 def normalize_rows(F: np.ndarray) -> np.ndarray:
+    """
+    Normalize each row of F to unit ℓ2 norm.
+
+    Rows with zero norm are left unchanged (protected by replacing 0 with 1 in the divisor).
+    Returns a new array; does not modify the input in place.
+    """
     norms = np.linalg.norm(F, axis=1, keepdims=True)
     norms = np.where(norms == 0.0, 1.0, norms)
     return F / norms
@@ -55,8 +84,24 @@ def coherence_float64(
     F: np.ndarray,
 ) -> tuple[float, tuple[int, int], float, np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
-    Return (mu, argmax_pair, second_largest, offdiag_vector, triu_indices).
-    offdiag_vector is the vectorized upper-tri entries (abs Gram), length n*(n-1)/2.
+    Compute coherence in float64 and supporting data.
+
+    The input is row‑normalized internally, then the Gram matrix G = F F* is formed
+    and the absolute upper‑triangular entries are scanned.
+
+    Returns
+    -------
+    (mu, argmax_pair, mu2, off, iu)
+        mu : float
+            Maximum |G_ij| over i<j (coherence).
+        argmax_pair : tuple[int, int]
+            Indices (i, j) attaining the maximum.
+        mu2 : float
+            Second largest off‑diagonal magnitude (masking out one occurrence of the max).
+        off : np.ndarray
+            Vectorized upper‑triangular absolute values, length n*(n−1)/2.
+        iu : tuple[np.ndarray, np.ndarray]
+            The (i, j) index arrays used to map back from `off` to matrix pairs.
     """
     F = normalize_rows(F)
     G = F @ F.conj().T
@@ -80,8 +125,22 @@ def coherence_mpmath(
     F: np.ndarray, dps: int = 120, top_pairs: list[tuple[int, int]] | None = None
 ) -> float:
     """
-    High-precision max |<fi,fj>|. If top_pairs is provided, only verify those pairs;
-    otherwise compute full O(n^2 d) search.
+    Compute coherence with arbitrary precision using mpmath.
+
+    Parameters
+    ----------
+    F : np.ndarray
+        Frame array (n, d). Rows are normalized internally (in high precision).
+    dps : int, default 120
+        Decimal digits of precision to use in mpmath.
+    top_pairs : list[tuple[int, int]] | None
+        If provided, only these index pairs (i, j) are evaluated; otherwise a full
+        O(n^2 d) search is performed.
+
+    Returns
+    -------
+    float
+        Maximum |<f_i, f_j>| over the evaluated pairs.
     """
     if mp is None:
         raise RuntimeError("mpmath not installed; pip install mpmath")
@@ -120,6 +179,12 @@ def coherence_mpmath(
 
 
 def summarize_offdiag(off: np.ndarray, mu: float) -> dict[str, Any]:
+    """
+    Summarize the distribution of off‑diagonal absolute Gram entries.
+
+    Returns a dict with count, mean, std, min/median/quantiles, max, and a simple
+    `degeneracy_at_max` count using atol=1e‑12.
+    """
     q = {p: float(np.quantile(off, p)) for p in (0.5, 0.9, 0.95, 0.99)}
     return {
         "count": int(off.size),
@@ -138,6 +203,11 @@ def summarize_offdiag(off: np.ndarray, mu: float) -> dict[str, Any]:
 def topk_pairs(
     off: np.ndarray, iu: tuple[np.ndarray, np.ndarray], k: int
 ) -> list[tuple[float, tuple[int, int]]]:
+    """
+    Return the top‑k pairs (value, (i, j)) from the vectorized upper‑tri off‑diagonal
+    entries `off`, sorted in descending order. `iu` are the index arrays from
+    `np.triu_indices` used to map indices back to (i, j) pairs.
+    """
     if k <= 0:
         return []
     k = min(k, off.size)
@@ -154,6 +224,7 @@ def topk_pairs(
 
 
 def parse_args() -> argparse.Namespace:
+    """Build and parse CLI arguments for the verifier."""
     ap = argparse.ArgumentParser(
         description="Verify frame coherence from .npy with optional high-precision check.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -192,6 +263,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI entry point: load frame, compute/report coherences, optionally write JSON."""
     args = parse_args()
     path = Path(args.input).resolve()
     F = load_frame(path)
