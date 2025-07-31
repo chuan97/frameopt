@@ -2,25 +2,38 @@
 """
 run_cg_ramp.py  –  Pure CG with a p-exponent ramp (no CMA, no restarts).
 
-Runs Conjugate-Gradient in consecutive chunks. After each chunk of `switch_every`
-iterations, increases the exponent p via `p <- min(p * p_mult, p_max)` and continues
-from the current frame.
+Runs Conjugate-Gradient in consecutive **chunks** of iterations. After each
+chunk completes, the scheduler may increase the exponent p according to one of
+two policies:
+
+Schedulers
+---------
+• fixed      – periodic: ramp p at every chunk boundary (equivalently, every
+               `--switch-every` iterations). Effect: p <- min(p * p_mult, p_max).
+• adaptive   – budgeted, constant-window (event-based): treat each chunk end as
+               one "step"; ramp when there has been **no new global best coherence**
+               for the last `--window` chunks AND at least `--window` chunks since
+               the previous ramp. The per-ramp multiplier is chosen so that, if the
+               observed stall interval repeats, p reaches p_max by the final chunk.
 
 The script logs per-chunk metrics (coherence and diff_coherence under current p),
-supports live plotting, and can start from a random frame or from an input .npy file.
+and can start from a random frame or from an input .npy file.
 
 Examples
 --------
-$ python scripts/cli/run_cg_ramp.py -n 30 -d 4 --iters 2000 --p0 2 --p-mult 1.5 \
-      --switch-every 200 --p-max 2048
+# Fixed scheduler: ramp every 200 iterations (one chunk)
+$ python scripts/cli/run_cg_ramp.py -n 30 -d 4 --iters 2000 --scheduler fixed \
+      --p0 2 --p-mult 1.5 --switch-every 200 --p-max 2048
 
-$ python scripts/cli/run_cg_ramp.py -n 32 -d 6 --init-npy seed_frame.npy --iters 3000 \
-      --p0 2 --p-mult 1.25 --switch-every 300 --log-file cg_ramp.csv
+# Adaptive scheduler: chunk size = 300 iterations, window over chunks = 3
+$ python scripts/cli/run_cg_ramp.py -n 32 -d 6 --init-npy seed.npy --iters 3000 \
+      --scheduler adaptive --p0 2 --p-max 1e6 --switch-every 300 --window 3
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import math
 import time
 from pathlib import Path
 
@@ -29,6 +42,11 @@ import numpy as np
 from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.local import cg_minimize
+from evomof.optim.utils.p_scheduler import (
+    AdaptivePScheduler,
+    FixedPScheduler,
+    Scheduler,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,6 +57,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("-n", type=int, default=16, help="Number of frame vectors")
     p.add_argument("-d", type=int, default=4, help="Ambient dimension")
     p.add_argument("--iters", type=int, default=2000, help="Total CG iterations budget")
+    p.add_argument(
+        "--scheduler",
+        type=str,
+        choices=("fixed", "adaptive"),
+        default="fixed",
+        help=(
+            "p-ramp scheduler: 'fixed' (default) ramps every CHUNK (i.e., at each "
+            "--switch-every boundary). 'adaptive' is event-based with a constant "
+            "window over CHUNKS: it ramps only at chunk boundaries when there has been "
+            "no new global best for --window chunks and at least --window chunks since "
+            "the last ramp. For CG, adaptive is useful mainly when chunks are small "
+            "(e.g., 50–150 iterations) so it can detect stalls across chunks."
+        ),
+    )
     p.add_argument(
         "--switch-every",
         type=int,
@@ -76,6 +108,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Save final best frame as submission .txt",
     )
+    p.add_argument(
+        "--window",
+        type=int,
+        default=3,
+        help="(adaptive) constant patience window in CHUNKS (not iterations)",
+    )
     return p.parse_args()
 
 
@@ -100,33 +138,67 @@ def main() -> None:
             f"Frame shape {frame.vectors.shape} != (n,d)=({args.n},{args.d})"
         )
 
-    # p ramp state
-    p_exp = float(args.p0)
+    # Chunking: how many CG iterations per chunk (evaluation cadence)
+    if args.switch_every and args.switch_every > 0:
+        chunk_iters = int(args.switch_every)
+    else:
+        # No chunking: single chunk with all iterations
+        chunk_iters = args.iters
 
-    # Histories
-    coh_history: list[float] = []
-    best_history: list[float] = []
-    iter_history: list[int] = []
-    p_marks: list[int] = []
+    total_chunks = max(1, math.ceil(args.iters / chunk_iters))
+
+    # Build p-scheduler. For fixed scheduler we ramp at each chunk boundary,
+    # i.e., switch_every=1 in scheduler-steps (chunks). If only one chunk, disable ramp.
+    if args.scheduler == "fixed":
+        sched: Scheduler = FixedPScheduler(
+            p0=args.p0,
+            p_mult=args.p_mult,
+            p_max=args.p_max,
+            switch_every=(1 if total_chunks > 1 else None),
+        )
+        print(
+            f"[scheduler] fixed | p0={args.p0}, p_mult={args.p_mult}, p_max={args.p_max}, "
+            f"chunk_iters={chunk_iters}, total_chunks={total_chunks}"
+        )
+    else:
+        if chunk_iters <= 0:
+            raise ValueError(
+                "adaptive scheduler requires --switch-every > 0 (chunk size)"
+            )
+        sched = AdaptivePScheduler(
+            p0=args.p0,
+            p_max=args.p_max,
+            total_steps=total_chunks,
+            window=args.window,
+        )
+        print(
+            f"[scheduler] adaptive | p0={args.p0}, p_max={args.p_max}, window={args.window}, "
+            f"chunk_iters={chunk_iters}, total_chunks={total_chunks}"
+        )
+
+    # Histories removed (unused)
 
     # Global best (by actual coherence)
     best_frame = frame
     best_coh = float(coherence(frame))
 
-    # Metrics store
-    metrics: list[dict] = []
     t0 = time.perf_counter()
     it_cum = 0
+    metrics: list[dict] = []
+
     print(
-        f"Running CG for {args.iters} iterations (switch p every {args.switch_every})"
+        f"Running CG for {args.iters} iterations in {total_chunks} chunks of {chunk_iters} (last may be smaller)"
     )
 
-    while it_cum < args.iters:
-        # Chunk size: either switch_every or the remaining iterations (if 0: use all remaining)
-        if args.switch_every and args.switch_every > 0:
-            chunk = min(args.switch_every, args.iters - it_cum)
-        else:
-            chunk = args.iters - it_cum
+    for chunk_idx in range(1, total_chunks + 1):
+        # Determine iterations for this chunk
+        remaining = args.iters - it_cum
+        if remaining <= 0:
+            break
+        this_chunk = min(chunk_iters, remaining)
+
+        # Current p from scheduler
+        p_exp = sched.current_p()
 
         # Define energy and gradient under current p
         E = lambda F: diff_coherence(F, p=p_exp)
@@ -134,14 +206,9 @@ def main() -> None:
 
         # Run CG for this chunk
         t_chunk0 = time.perf_counter()
-        frame = cg_minimize(
-            frame,
-            energy_fn=E,
-            grad_fn=G,
-            maxiter=chunk,
-        )
+        frame = cg_minimize(frame, energy_fn=E, grad_fn=G, maxiter=this_chunk)
         t_chunk = time.perf_counter() - t_chunk0
-        it_cum += chunk
+        it_cum += this_chunk
 
         # Evaluate metrics at chunk end
         cur_coh = float(coherence(frame))
@@ -152,10 +219,11 @@ def main() -> None:
             best_coh = cur_coh
             best_frame = frame
 
-        # Record metrics
+        # Record metrics (per CHUNK)
         elapsed = time.perf_counter() - t0
         metrics.append(
             {
+                "chunk": chunk_idx,
                 "iters_cumulative": it_cum,
                 "elapsed_time": elapsed,
                 "p": p_exp,
@@ -164,33 +232,21 @@ def main() -> None:
             }
         )
 
-        # Update histories / live plot
-        iter_history.append(it_cum)
-        coh_history.append(cur_coh)
-        best_history.append(best_coh)
+        # Ask scheduler to possibly ramp for the **next** chunk
+        p_before = p_exp
+        p_after, switched = sched.update(step=chunk_idx, global_best_coh=best_coh)
+        if switched:
+            print(f"[p-ramp] chunk {chunk_idx}: p {p_before:g} -> {p_after:g}")
 
-        # p-ramp: increase p for next chunk
-        if (
-            args.switch_every
-            and args.switch_every > 0
-            and it_cum < args.iters
-            and p_exp < args.p_max
-        ):
-            old_p = p_exp
-            p_exp = min(p_exp * args.p_mult, args.p_max)
-            print(f"[p-ramp] after {it_cum} iters: p {old_p:g} -> {p_exp:g}")
-
-        # Console progress (every ~10% of budget)
-        if len(iter_history) == 1 or it_cum >= (
-            args.iters * (len(iter_history) / max(len(iter_history), 10))
-        ):
-            print(
-                f"  iters={it_cum:6d} | p={p_exp:g} | coh={cur_coh:.8f} | best={best_coh:.8f} | chunk_time={t_chunk:.2f}s"
-            )
+        # Console progress
+        print(
+            f"  chunk={chunk_idx:3d}/{total_chunks} | iters={it_cum:6d} | p={p_after:g} | "
+            f"coh={cur_coh:.8f} | best={best_coh:.8f} | chunk_time={t_chunk:.2f}s"
+        )
 
     runtime = time.perf_counter() - t0
     print(
-        f"CG complete in {runtime:.2f}s | final p={p_exp:g} | best coherence={best_coh:.8f}"
+        f"CG complete in {runtime:.2f}s | final p={p_after:g} | best coherence={best_coh:.8f}"
     )
 
     # CSV export
