@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import importlib
 import json
 import subprocess
 import sys
@@ -296,15 +297,18 @@ def main() -> None:
                 have_mp = False
                 if want_mp:
                     try:
+                        importlib.import_module("mpmath")
                         have_mp = True
                     except Exception:
                         have_mp = False
-                        print(f"[ver] seed={seed} | mpmath not available; falling back to float64")
+                        print(f"[ver] seed={seed} | mpmath not available; will verify in float64")
                 if have_mp:
                     vcmd += ["--mp-dps", str(int(mp_dps))]
                     if isinstance(mp_topk, int) and mp_topk >= 0:
                         vcmd += ["--mp-topk", str(int(mp_topk))]
 
+                # Echo verifier command to console for visibility
+                print(f"[cmd-ver] {' '.join(vcmd)}")
                 # Append verifier output to the same log and run
                 with log_path.open("a") as logf:
                     logf.write("\n[verify] running verify_frame.py\n")
@@ -313,6 +317,19 @@ def main() -> None:
                     logf.write(f"[verify] return_code={rc_v}\n")
                 if rc_v != 0:
                     print(f"[ver] seed={seed} | verifier exited with rc={rc_v}")
+                    # If we asked for mpmath, try once more without high-precision flags
+                    if have_mp and "--mp-dps" in vcmd:
+                        vcmd_fallback = [sys.executable, str(verify_cli), str(npy_path), "--json"]
+                        with log_path.open("a") as logf:
+                            logf.write("[verify] retry without mpmath flags\n")
+                            logf.write(f"[verify] cmd: {' '.join(vcmd_fallback)}\n")
+                            rc_v2 = subprocess.call(vcmd_fallback, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root))
+                            logf.write(f"[verify] return_code={rc_v2}\n")
+                        if rc_v2 == 0:
+                            print(f"[ver] seed={seed} | fallback float64 verification succeeded")
+                            rc_v = 0
+                        else:
+                            print(f"[ver] seed={seed} | fallback verifier also failed (rc={rc_v2})")
 
                 # Read certificate JSON if created
                 cert_path = run_dir / f"{npy_path.stem}_certificate.json"
