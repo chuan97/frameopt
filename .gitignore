@@ -22,6 +22,6 @@ build/
 results/
 
 # Experiments
-scripts/bench/*_bench_config.json
-!scripts/bench/reference_*_bench_config.json
+scripts/bench/*_config.json
+!scripts/bench/reference_*_config.json
 analysis/notebooks/
