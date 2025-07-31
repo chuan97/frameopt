@@ -1,0 +1,9 @@
+{
+  "experiment": "d3n17_cma_adaptive",
+  "problem": { "n": 17, "d": 3 },
+  "cma": { "gen": 20000},
+  "scheduler": {"mode": "adaptive", "p0": 6.0, "p_max": 1e9, "window": 200},
+  "seeds": { "count": 10, "start": 1 },
+  "logging": { "save_metrics": true },
+  "exports": { "save_npy": true, "save_txt": true}
+}
