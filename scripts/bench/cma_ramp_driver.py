@@ -73,6 +73,7 @@ class ExperimentConfig:
     seeds: Dict[str, Any]  # {"list":[...]} OR {"count":int, "start":int}
     logging: Dict[str, Any] | None = None  # {"save_metrics": bool}
     exports: Dict[str, Any] | None = None  # {"save_npy": bool, "save_txt": bool}
+    certify: Dict[str, Any] | None = None  # {"enabled": bool, "mp_dps": int, "mp_topk": int}
 
     @staticmethod
     def load(path: Path) -> "ExperimentConfig":
@@ -94,6 +95,16 @@ def _resolve_cli_path(this_file: Path) -> Path:
     if not cli.exists():
         raise FileNotFoundError(f"Could not find run_cma_ramp.py at {cli}")
     return cli
+
+
+def _resolve_verify_cli(this_file: Path) -> Path:
+    # this file: repo/scripts/bench/cma_ramp_driver.py
+    # verifier  : repo/scripts/cli/verify_frame.py
+    repo_root = this_file.parents[2]
+    vf = repo_root / "scripts" / "cli" / "verify_frame.py"
+    if not vf.exists():
+        raise FileNotFoundError(f"Could not find verify_frame.py at {vf}")
+    return vf
 
 
 def _discover_config(this_file: Path) -> Path:
@@ -203,6 +214,7 @@ def main() -> None:
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
     cli_path = _resolve_cli_path(this_file)
+    verify_cli = _resolve_verify_cli(this_file)
     cfg_path = _discover_config(this_file)
 
     # Enforce clean repo for certifiable experiments
@@ -230,6 +242,9 @@ def main() -> None:
 
     # Seeds
     seeds = _seeds_from_cfg(cfg.seeds)
+    best_seed: int | None = None
+    best_coh_num: float | None = None
+    best_coh_8dp: str | None = None
     print(f"[exp] {cfg.experiment} | seeds={seeds}")
 
     # Summary CSV
@@ -265,11 +280,52 @@ def main() -> None:
             )
         )
 
+        # Optional certification step: run verify_frame.py to produce JSON certificate next to the frame
+        cert_json_rel = ""
+        coh8 = ""
+        if cfg.certify and bool(cfg.certify.get("enabled", False)):
+            npy_path = run_dir / "best_frame.npy"
+            if npy_path.exists():
+                # Build verifier command
+                vcmd = [sys.executable, str(verify_cli), str(npy_path), "--json"]
+                mp_dps = cfg.certify.get("mp_dps")
+                mp_topk = cfg.certify.get("mp_topk")
+                if isinstance(mp_dps, int) and mp_dps > 0:
+                    vcmd += ["--mp-dps", str(mp_dps)]
+                    if isinstance(mp_topk, int) and mp_topk >= 0:
+                        vcmd += ["--mp-topk", str(mp_topk)]
+                # Append verifier output to the same log
+                with log_path.open("a") as logf:
+                    logf.write("\n[verify] running verify_frame.py\n")
+                    rc_v = subprocess.call(vcmd, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root))
+                    logf.write(f"[verify] return_code={rc_v}\n")
+                # Read certificate JSON if created
+                cert_path = run_dir / f"{npy_path.stem}_certificate.json"
+                if cert_path.exists():
+                    cert_json_rel = str(cert_path.relative_to(out_root))
+                    try:
+                        cert = json.loads(cert_path.read_text())
+                        # prefer high-precision coherence if available
+                        coh_num = cert.get("coherence_mpmath", None)
+                        if coh_num is None:
+                            coh_num = cert.get("coherence_float64", None)
+                        coh8 = cert.get("coherence_mpmath_8dp", None) or cert.get("coherence_float64_8dp", "")
+                        # track best across seeds
+                        if isinstance(coh_num, (int, float)):
+                            if best_coh_num is None or float(coh_num) < best_coh_num:
+                                best_coh_num = float(coh_num)
+                                best_seed = seed
+                                best_coh_8dp = coh8 if isinstance(coh8, str) else None
+                    except Exception:
+                        pass
+
         summary_rows.append(
             {
                 "seed": seed,
                 "return_code": rc,
                 "runtime_sec": round(dt, 3),
+                "certificate_json": cert_json_rel,
+                "best_coherence_8dp": coh8,
                 "metrics_csv": (
                     str((run_dir / "cma_metrics.csv").relative_to(out_root))
                     if (run_dir / "cma_metrics.csv").exists()
@@ -289,7 +345,7 @@ def main() -> None:
             }
         )
         status = "OK" if rc == 0 else f"rc={rc}"
-        print(f"[done] seed={seed} | {status} | {dt:.2f}s")
+    print(f"[done] seed={seed} | {status} | {dt:.2f}s")
 
     # Write summary
     if summary_rows:
@@ -298,6 +354,9 @@ def main() -> None:
             w.writeheader()
             w.writerows(summary_rows)
         print(f"[summary] {out_root / 'summary.csv'}")
+
+    if best_seed is not None and best_coh_8dp:
+        print(f"[best] seed={best_seed:04d}  coherence_8dp={best_coh_8dp}")
 
     print(f"[out] {out_root}")
 
