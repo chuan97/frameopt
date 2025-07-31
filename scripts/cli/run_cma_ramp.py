@@ -3,17 +3,26 @@
 run_cma_ramp.py  –  Pure Projection-CMA with a p-exponent ramp.
 
 Run a single CMA-ES instance (no restarts) while progressively increasing the
-exponent *p* used in the differentiable coherence objective. The ramp follows:
-    p <- min(p * p_mult, p_max)
-whenever the generation counter hits a multiple of `switch_every`.
+exponent *p* used in the differentiable coherence objective.
 
-Optional live plotting shows generation-level best coherence, global best
-coherence, and sigma over time.
+Two schedulers are available:
+  • fixed:      periodic p increase, p <- min(p * p_mult, p_max) every `switch_every`.
+  • adaptive:   event-based constant-window scheduler (budgeted): ramp when no
+                new global best for `window` steps AND at least `window` since last ramp;
+                per-ramp multiplier is chosen so that, if the interval repeats,
+                p reaches p_max by generation `--gen`.
+
+Optional CSV logging records per-generation metrics.
 
 Example
 -------
-$ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --p0 2 --p-mult 1.5 \
-      --switch-every 200 --p-max 80 
+# Fixed scheduler (periodic)
+$ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --scheduler fixed \
+      --p0 2 --p-mult 1.5 --switch-every 200 --p-max 80
+
+# Adaptive scheduler (budgeted, constant window)
+$ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --scheduler adaptive \
+      --p0 2 --p-max 1e6 --window 100
 """
 from __future__ import annotations
 
@@ -26,7 +35,11 @@ import numpy as np
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
-from evomof.optim.utils.p_scheduler import PScheduler
+from evomof.optim.utils.p_scheduler import (
+    AdaptivePScheduler,
+    FixedPScheduler,
+    Scheduler,
+)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -52,19 +65,32 @@ def parse_args() -> argparse.Namespace:
     # p-ramp parameters
     p.add_argument("--p0", type=float, default=2.0, help="Initial p exponent")
     p.add_argument(
+        "--scheduler",
+        type=str,
+        choices=("fixed", "adaptive"),
+        default="adaptive",
+        help="p-ramp scheduler: fixed (periodic) or adaptive (budgeted, constant window)",
+    )
+    p.add_argument(
         "--p-mult",
         type=float,
         default=1.5,
         help="Multiplier applied to p at each switch step",
     )
     p.add_argument(
-        "--p-max", type=float, default=1e12, help="Maximum p exponent (cap after ramp)"
+        "--p-max", type=float, default=1e9, help="Maximum p exponent (cap after ramp)"
     )
     p.add_argument(
         "--switch-every",
         type=int,
         default=200,
         help="Increase p every this many generations (0 disables ramp)",
+    )
+    p.add_argument(
+        "--window",
+        type=int,
+        default=100,
+        help="(adaptive) constant patience window in generations",
     )
     # Output / logging
     p.add_argument(
@@ -102,15 +128,30 @@ def main() -> None:
     else:
         popsize = args.popsize
 
-    # CMA initialisation (energy kwargs will be updated as p changes)
-    sched = PScheduler(
-        mode="fixed",
-        p0=args.p0,
-        p_mult=args.p_mult,
-        p_max=args.p_max,
-        switch_every=(args.switch_every if args.switch_every > 0 else None),
-        total_steps=args.gen,
-    )
+    # Build p-scheduler (Fixed or Adaptive)
+    if args.scheduler == "fixed":
+        switch_every = (
+            args.switch_every if args.switch_every and args.switch_every > 0 else None
+        )
+        sched: Scheduler = FixedPScheduler(
+            p0=args.p0,
+            p_mult=args.p_mult,
+            p_max=args.p_max,
+            switch_every=switch_every,
+        )
+        print(
+            f"[scheduler] fixed: p0={args.p0}, p_mult={args.p_mult}, switch_every={switch_every}, p_max={args.p_max}"
+        )
+    else:  # adaptive (budgeted, constant window)
+        sched = AdaptivePScheduler(
+            p0=args.p0,
+            p_max=args.p_max,
+            total_steps=args.gen,
+            window=args.window,
+        )
+        print(
+            f"[scheduler] adaptive: p0={args.p0}, window={args.window}, p_max={args.p_max}, total_steps={args.gen}"
+        )
     p_exp = sched.current_p()
     cma = ProjectionCMA(
         n=args.n,
