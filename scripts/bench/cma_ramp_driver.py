@@ -292,15 +292,28 @@ def main() -> None:
                 vcmd = [sys.executable, str(verify_cli), str(npy_path), "--json"]
                 mp_dps = cfg.certify.get("mp_dps")
                 mp_topk = cfg.certify.get("mp_topk")
-                if isinstance(mp_dps, int) and mp_dps > 0:
-                    vcmd += ["--mp-dps", str(mp_dps)]
+                want_mp = isinstance(mp_dps, int) and mp_dps > 0
+                have_mp = False
+                if want_mp:
+                    try:
+                        have_mp = True
+                    except Exception:
+                        have_mp = False
+                        print(f"[ver] seed={seed} | mpmath not available; falling back to float64")
+                if have_mp:
+                    vcmd += ["--mp-dps", str(int(mp_dps))]
                     if isinstance(mp_topk, int) and mp_topk >= 0:
-                        vcmd += ["--mp-topk", str(mp_topk)]
-                # Append verifier output to the same log
+                        vcmd += ["--mp-topk", str(int(mp_topk))]
+
+                # Append verifier output to the same log and run
                 with log_path.open("a") as logf:
                     logf.write("\n[verify] running verify_frame.py\n")
+                    logf.write(f"[verify] cmd: {' '.join(vcmd)}\n")
                     rc_v = subprocess.call(vcmd, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root))
                     logf.write(f"[verify] return_code={rc_v}\n")
+                if rc_v != 0:
+                    print(f"[ver] seed={seed} | verifier exited with rc={rc_v}")
+
                 # Read certificate JSON if created
                 cert_path = run_dir / f"{npy_path.stem}_certificate.json"
                 if cert_path.exists():
@@ -320,8 +333,12 @@ def main() -> None:
                                 best_coh_8dp = coh8 if isinstance(coh8, str) else None
                         if coh8:
                             print(f"[ver] seed={seed} | coherence_8dp={coh8}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[ver] seed={seed} | failed to parse certificate JSON: {e}")
+                else:
+                    print(f"[ver] seed={seed} | certificate not found (expected {cert_path.name})")
+            else:
+                print(f"[ver] seed={seed} | best_frame.npy not found; skipping verification")
 
         summary_rows.append(
             {
