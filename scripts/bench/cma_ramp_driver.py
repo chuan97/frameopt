@@ -286,6 +286,8 @@ def main() -> None:
         if cfg.certify and bool(cfg.certify.get("enabled", False)):
             npy_path = run_dir / "best_frame.npy"
             if npy_path.exists():
+                # Console notice for verifier
+                print(f"[ver] seed={seed} → verify {npy_path.name}")
                 # Build verifier command
                 vcmd = [sys.executable, str(verify_cli), str(npy_path), "--json"]
                 mp_dps = cfg.certify.get("mp_dps")
@@ -316,6 +318,8 @@ def main() -> None:
                                 best_coh_num = float(coh_num)
                                 best_seed = seed
                                 best_coh_8dp = coh8 if isinstance(coh8, str) else None
+                        if coh8:
+                            print(f"[ver] seed={seed} | coherence_8dp={coh8}")
                     except Exception:
                         pass
 
@@ -345,7 +349,7 @@ def main() -> None:
             }
         )
         status = "OK" if rc == 0 else f"rc={rc}"
-    print(f"[done] seed={seed} | {status} | {dt:.2f}s")
+        print(f"[done] seed={seed} | {status} | {dt:.2f}s")
 
     # Write summary
     if summary_rows:
