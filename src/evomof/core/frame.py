@@ -342,7 +342,7 @@ class Frame:
             n = np.linalg.norm(U)
             if n > 0:
                 U = U / n
-        return typing.cast(Complex128Array, U)
+        return U
 
     # ------------------------------------------------------------------ #
     # Convenience & dunder methods                                       #
