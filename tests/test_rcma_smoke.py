@@ -109,3 +109,36 @@ def test_start_frame_is_used_with_small_sigma():
     mean_dist = float(np.mean(dists))
 
     assert mean_dist < 1e-2, "Initial population not concentrated around start_frame"
+
+
+def test_energy_decreases_on_run():
+    """
+    After a few generations, the best energy should improve vs. the first
+    generation's best (stochastic, so use a modest relative threshold).
+    """
+    n, d, pop = 6, 3, 20
+    algo = RiemannianCMA(
+        n=n,
+        d=d,
+        sigma0=0.3,
+        popsize=pop,
+        seed=321,
+        energy_fn=diff_coherence,
+        energy_kwargs={"p": 4},
+    )
+
+    # Generation 0: sample and evaluate once to get a baseline best
+    pop0 = algo.ask()
+    E0 = [diff_coherence(fr, p=4) for fr in pop0]
+    best0 = float(np.min(E0))
+    algo.tell(pop0, np.array(E0))
+
+    # Run a few generations
+    best_frame = algo.run(max_gen=30, tol=0.0, log_every=0)
+    best_after = float(diff_coherence(best_frame, p=4))
+
+    # Expect at least a small improvement (5%)
+    assert best_after <= 0.95 * best0, (
+        f"Energy did not improve enough: initial best {best0:.3e}, "
+        f"after run {best_after:.3e}"
+    )
