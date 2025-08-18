@@ -263,6 +263,87 @@ class Frame:
         tang = scale[:, None] * diff
         return typing.cast(Complex128Array, tang.astype(np.complex128))
 
+    def transport(
+        self, other: "Frame", tang: np.ndarray, eps: float = 1e-12
+    ) -> Complex128Array:
+        """
+        Exact parallel transport on the CP lift (row-wise), using phase alignment.
+        For each row:
+        - Let s = <x,y>. Set phase = s/|s| (or 1 if |s|≈0),
+            y_tilde = y / phase so <x,y_tilde>∈R_{>=0}.
+        - Apply sphere PT with y_tilde:
+            xi_tilde = U - (<y_tilde,U>/(1+<x,y_tilde>)) (x + y_tilde).
+        - Rotate back: xi = phase * xi_tilde.
+
+        This preserves tangency (⟨y,xi⟩=0)
+        and the tangent norm exactly in exact arithmetic.
+        """
+        if other.shape != self.shape:
+            raise ValueError("Frame shapes mismatch")
+        if tang.shape != self.shape:
+            raise ValueError("Tangent array shape mismatch.")
+
+        x = self.vectors  # (n, d)
+        y = other.vectors  # (n, d)
+
+        # Row-wise complex inner product s = <x, y>
+        s = np.sum(x.conj() * y, axis=1, keepdims=True)  # (n,1) complex
+        abs_s = np.abs(s)
+        # Phase to align <x, y_tilde> to be real nonnegative
+        phase = np.ones_like(s, dtype=np.complex128)
+        nz = abs_s > eps
+        phase[nz] = s[nz] / abs_s[nz]  # e^{i φ}
+        y_tilde = y / phase  # y * e^{-i φ}
+
+        # Inner products with aligned target
+        dot_yu = np.sum(y_tilde.conj() * tang, axis=1, keepdims=True)  # <y_tilde, U>
+        dot_xy = np.sum(
+            x.conj() * y_tilde, axis=1, keepdims=True
+        )  # <x, y_tilde> ∈ ℝ ideally
+        # Use the real part for numerical robustness (should be real after alignment)
+        dot_xy_real = np.real(dot_xy)
+
+        denom = 1.0 + dot_xy_real  # (n,1) real
+        bad = np.abs(denom) < eps  # antipodal guard
+        denom_safe = denom.copy()
+        denom_safe[bad] = 1.0
+
+        transported_tilde = tang - (dot_yu / denom_safe) * (x + y_tilde)
+        transported = transported_tilde * phase  # rotate back
+
+        # Fallback for (near) antipodal rows: projection transport
+        if np.any(bad):
+            idx = bad.ravel()
+            transported[idx, :] = other.project(tang[idx, :])
+
+        return typing.cast(Complex128Array, transported.astype(np.complex128))
+
+    def random_tangent(
+        self,
+        rng: np.random.Generator | None = None,
+        *,
+        unit: bool = True,
+    ) -> Complex128Array:
+        """
+        Draw a random tangent array at this Frame.
+
+        Sampling: i.i.d. complex normal in ambient, projected to the tangent space.
+        If `unit=True`, the result is normalised to Frobenius norm 1.
+
+        Returns
+        -------
+        Complex128Array
+            Shape == self.shape, tangent at `self`.
+        """
+        rng = rng or np.random.default_rng()
+        Z = rng.standard_normal(self.shape) + 1j * rng.standard_normal(self.shape)
+        U = self.project(Z.astype(np.complex128, copy=False))
+        if unit:
+            n = np.linalg.norm(U)
+            if n > 0:
+                U = U / n
+        return typing.cast(Complex128Array, U)
+
     # ------------------------------------------------------------------ #
     # Convenience & dunder methods                                       #
     # ------------------------------------------------------------------ #
