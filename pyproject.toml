@@ -68,6 +68,7 @@ lint = "ruff check src tests && black --check src tests"
 test = "pytest -q"
 typecheck = "mypy -p evomof"
 bench = "python scripts/bench/quick_benchmark.py"
+all = "hatch run lint ; hatch run typecheck ; hatch run test ; hatch run bench"
 
 [tool.hatch.envs.verify]
 # Separate environment that includes the 'verify' extra (mpmath) only

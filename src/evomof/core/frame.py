@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import Final, Iterator, Tuple
+from typing import Iterator, Tuple
 
 import numpy as np
 
 from evomof.core._types import Complex128Array
 
-__all__: Final = ["Frame"]
+__all__ = ["Frame"]
 
 
 @dataclass(slots=True)
@@ -41,7 +41,7 @@ class Frame:
     # --------------------------------------------------------------------- #
 
     @classmethod
-    def from_array(cls, arr: np.ndarray, *, copy: bool = True) -> "Frame":
+    def from_array(cls, arr: np.ndarray, *, copy: bool = True) -> Frame:
         """
         Wrap an existing `(n, d)` complex array.
 
@@ -61,7 +61,7 @@ class Frame:
         n: int,
         d: int,
         rng: np.random.Generator | None = None,
-    ) -> "Frame":
+    ) -> Frame:
         """
         Return a frame whose rows are sampled uniformly from the unit sphere
         ``S^{2d-1}`` and then gauge‑fixed.
@@ -156,7 +156,7 @@ class Frame:
     # Manifold operations (sphere product ≅ CP^{d-1})                #
     # -------------------------------------------------------------- #
 
-    def retract(self, tang: np.ndarray) -> "Frame":
+    def retract(self, tang: np.ndarray) -> Frame:
         """
         Exact exponential-map retraction (per‑row great‑circle step).
 
@@ -215,7 +215,7 @@ class Frame:
         new_vecs = scale_cos * self.vectors + scale_sin * tang
         return Frame.from_array(new_vecs, copy=False)
 
-    def log_map(self, other: "Frame") -> Complex128Array:
+    def log_map(self, other: Frame) -> Complex128Array:
         """
         Compute the exact Riemannian logarithmic map on the product sphere.
 
@@ -264,7 +264,7 @@ class Frame:
         return typing.cast(Complex128Array, tang.astype(np.complex128))
 
     def transport(
-        self, other: "Frame", tang: np.ndarray, eps: float = 1e-12
+        self, other: Frame, tang: np.ndarray, eps: float = 1e-12
     ) -> Complex128Array:
         """
         Exact parallel transport on the CP lift (row-wise), using phase alignment.
@@ -348,7 +348,7 @@ class Frame:
     # Convenience & dunder methods                                       #
     # ------------------------------------------------------------------ #
 
-    def copy(self) -> "Frame":
+    def copy(self) -> Frame:
         return Frame.from_array(self.vectors, copy=True)
 
     def __iter__(self) -> Iterator[Complex128Array]:
@@ -367,7 +367,7 @@ class Frame:
         np.save(path, self.vectors)
 
     @classmethod
-    def load_npy(cls, path: str) -> "Frame":
+    def load_npy(cls, path: str) -> Frame:
         """
         Load a Frame from a NumPy .npy file containing a complex array.
 
