@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-import typing
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, cast
@@ -34,25 +33,21 @@ def _householder_basis(x: np.ndarray) -> Complex128Array:
     d = x.shape[0]
     nrm = np.linalg.norm(x)
     if nrm == 0:
-        Q, _ = np.linalg.qr(np.eye(d, dtype=np.complex128))
-        return typing.cast(Complex128Array, Q[:, 1:])
+        id = np.eye(d, dtype=np.complex128)
+        return id[:, 1:]
     v = x / nrm
-    a = v[0]
-    phase = a / np.abs(a) if np.abs(a) > 0 else 1.0 + 0j
+    a0 = v[0]
+    phase = a0 / np.abs(a0) if np.abs(a0) > 0 else 1.0 + 0j
     u = v.copy()
     u[0] += phase
     un = np.linalg.norm(u)
     if un < 1e-14:
-        # v already ~ ±e1 up to phase
-        Q = np.eye(d, dtype=np.complex128)
-        return typing.cast(Complex128Array, Q[:, 1:])
+        id = np.eye(d, dtype=np.complex128)
+        return id[:, 1:]
     u /= un
     H = np.eye(d, dtype=np.complex128) - 2.0 * np.outer(u, np.conj(u))
     Q = H[:, 1:]
-    # polish: enforce orthogonality to v and re-QR
-    Q = Q - np.outer(v, (np.conj(v) @ Q))
-    Q, _ = np.linalg.qr(Q)
-    return typing.cast(Complex128Array, Q)
+    return Q
 
 
 class _CoordCodec:
@@ -150,6 +145,8 @@ class RiemannianCMAConfig:
         seed (int): Random seed for reproducibility.
         jitter (float): Small regularization term to ensure numerical stability.
         transport_eigs (bool): Whether to transport eigenvectors to new mean frame.
+        auto_hyper (bool): If True, set CMA learning rates
+            (c_sigma, d_sigma, c_c, c1, c_mu) from dimension-dependent defaults at init.
     """
 
     popsize: int = 32  # λ
@@ -168,6 +165,7 @@ class RiemannianCMAConfig:
     jitter: float = 1e-12
 
     transport_eigs: bool = True  # transport eigenvectors to new mean
+    auto_hyper: bool = True
 
 
 @dataclass
@@ -214,6 +212,7 @@ class RiemannianCMA:
         start_frame: Optional[Frame] = None,
         popsize: Optional[int] = None,
         seed: Optional[int] = None,
+        *,
         energy_fn: Callable[[Frame], float] = diff_coherence,
         energy_kwargs: dict[str, Any] | None = None,
     ):
@@ -288,6 +287,38 @@ class RiemannianCMA:
         D = np.ones(k)
         p_sigma = np.zeros(k)
         p_c = np.zeros(k)
+        # --- dimension-dependent CMA defaults (Hansen) ---
+        if self.cfg.auto_hyper:
+            n_dim = float(k)
+            mu_eff_ = float(mu_eff)
+
+            # step-size parameters
+            c_sigma = (mu_eff_ + 2.0) / (n_dim + mu_eff_ + 5.0)
+            d_sigma = (
+                1.0
+                + c_sigma
+                + 2.0 * max(0.0, np.sqrt((mu_eff_ - 1.0) / (n_dim + 1.0)) - 1.0)
+            )
+
+            # covariance path parameter
+            c_c = (4.0 + mu_eff_ / n_dim) / (n_dim + 4.0 + 2.0 * mu_eff_ / n_dim)
+
+            # rank-1 and rank-mu learning rates
+            c1 = 2.0 / (((n_dim + 1.3) ** 2) + mu_eff_)
+            alpha_mu = 2.0
+            c_mu = min(
+                1.0 - c1,
+                alpha_mu
+                * (mu_eff_ - 2.0 + 1.0 / mu_eff_)
+                / (((n_dim + 2.0) ** 2) + alpha_mu * mu_eff_ / 2.0),
+            )
+
+            # commit back to cfg
+            self.cfg.c_sigma = float(c_sigma)
+            self.cfg.d_sigma = float(d_sigma)
+            self.cfg.c_c = float(c_c)
+            self.cfg.c1 = float(c1)
+            self.cfg.c_mu = float(c_mu)
         return _State(
             X=X0,
             sigma=self.cfg.sigma0,
@@ -341,73 +372,97 @@ class RiemannianCMA:
         mu = min(cfg.parents, lam)
         sel = order[:mu]
 
-        # Recombination in coords
+        # Recombination in coords (old chart)
         W = st.weights[:lam]
         w_pos = W[:mu]
         Y_sel = np.stack([self._last_steps[i] for i in sel], axis=1)  # k×μ
         y_bar = Y_sel @ w_pos
 
-        # Move mean intrinsically
-        codec_X = _CoordCodec(st.X)
-        U_bar = codec_X.decode(y_bar)
-        X_new = st.X.retract(st.sigma * U_bar)
-
-        # Transport paths to new mean (coords → tangent → coords)
-        p_sigma_t = _CoordCodec.transport_coords(st.p_sigma, st.X, X_new)
-        p_c_t = _CoordCodec.transport_coords(st.p_c, st.X, X_new)
-
-        # Step-size update (whitened)
-        # compute C^{-1/2} y_bar using B, D
+        # --- all updates in the OLD chart ---------------------------------
+        # Step-size path (whitened, old chart)
         By = st.B.T @ y_bar
-        y_white = st.B @ (By / np.maximum(st.D, cfg.jitter))
+        y_white = st.B @ (By / np.maximum(st.D, cfg.jitter))  # ~ N(0,I)
         cσ, dσ = cfg.c_sigma, cfg.d_sigma
-        p_sigma_new = (1.0 - cσ) * p_sigma_t + np.sqrt(cσ * (2.0 - cσ) * st.mu_eff) * (
-            y_white / st.sigma
-        )
+        p_sigma_old = (1.0 - cσ) * st.p_sigma + np.sqrt(
+            cσ * (2.0 - cσ) * st.mu_eff
+        ) * y_white
         sigma_new = st.sigma * np.exp(
-            (cσ / dσ) * (np.linalg.norm(p_sigma_new) / self._E_norm - 1.0)
+            (cσ / dσ) * (np.linalg.norm(p_sigma_old) / self._E_norm - 1.0)
         )
 
-        # Covariance path (rank-1 path)
+        # Covariance path (old chart)
         cc = cfg.c_c
-        p_c_new = (1.0 - cc) * p_c_t + np.sqrt(cc * (2.0 - cc) * st.mu_eff) * (
-            y_bar / st.sigma
-        )
+        p_c_old = (1.0 - cc) * st.p_c + np.sqrt(cc * (2.0 - cc) * st.mu_eff) * y_bar
 
-        # Covariance update in coords
+        # Covariance update (old chart)
         k = self.k
-        C = st.B @ np.diag(st.D**2) @ st.B.T
+        C_old = st.B @ np.diag(st.D**2) @ st.B.T
         c1, cμ = cfg.c1, cfg.c_mu
-        C *= 1.0 - c1 - cμ
-        C += c1 * np.outer(p_c_new, p_c_new)
+        C_old *= 1.0 - c1 - cμ
+        C_old += c1 * np.outer(p_c_old, p_c_old)
 
         # Positive weights
         for j in range(mu):
             yj = Y_sel[:, j]
-            C += cμ * w_pos[j] * np.outer(yj, yj)
+            C_old += cμ * w_pos[j] * np.outer(yj, yj)
 
         # Active (negative) weights — PSD-safe scaling
         if cfg.use_active and lam > mu:
             neg_idx = order[mu:]
             Y_neg = np.stack([self._last_steps[i] for i in neg_idx], axis=1)  # k×(λ-μ)
             w_neg = W[mu:]
-            # compute ||C^{-1/2} y||^2 using current B, D
             Yw = st.B.T @ Y_neg
             Yw = Yw / np.maximum(st.D[:, None], cfg.jitter)
             scales = 1.0 / np.maximum(np.sum(Yw**2, axis=0), cfg.jitter)
             for j in range(Y_neg.shape[1]):
-                C += cμ * w_neg[j] * scales[j] * np.outer(Y_neg[:, j], Y_neg[:, j])
+                C_old += cμ * w_neg[j] * scales[j] * np.outer(Y_neg[:, j], Y_neg[:, j])
 
-        # Stabilize and refactor
+        # --- move the mean and build the new chart -------------------------
+        codec_X = _CoordCodec(st.X)
+        U_bar = codec_X.decode(y_bar)
+        X_new = st.X.retract(st.sigma * U_bar)
+        codec_Y = _CoordCodec(X_new)
+
+        # --- build T (old -> new) via (d-1) parallel transports ------------
+        n, d = st.X.shape
+        m = n * (d - 1)
+        k = 2 * m
+        Qx = codec_X.Q_blocks
+        Qy = codec_Y.Q_blocks
+
+        V_cols: list[np.ndarray] = []
+        for j in range(d - 1):
+            Uj = np.empty((n, d), dtype=np.complex128)
+            for i in range(n):
+                Uj[i, :] = Qx[i][:, j]
+            Vj = st.X.transport(X_new, Uj)  # (n, d)
+            V_cols.append(Vj)
+
+        blocks_real: list[np.ndarray] = []
+        for i in range(n):
+            Mi = np.stack([V_cols[j][i, :] for j in range(d - 1)], axis=1)  # (d, d-1)
+            Ti_c = np.conj(Qy[i]).T @ Mi  # (d-1, d-1) complex
+            Re, Im = Ti_c.real, Ti_c.imag
+            Ti_real = np.block([[Re, -Im], [Im, Re]])  # 2(d-1) x 2(d-1)
+            blocks_real.append(Ti_real)
+
+        T = np.zeros((k, k), dtype=np.float64)
+        off = 0
+        r = 2 * (d - 1)
+        for i in range(n):
+            T[off : off + r, off : off + r] = blocks_real[i]
+            off += r
+
+        # --- push covariance and paths into the NEW chart ------------------
+        C = T @ C_old @ T.T
         C += cfg.jitter * np.eye(k)
         evals, evecs = np.linalg.eigh(C)
         evals = np.maximum(evals, cfg.jitter)
         B_new = evecs
         D_new = np.sqrt(evals)
 
-        # Transport eigenvectors to new mean (optional)
-        if cfg.transport_eigs:
-            B_new = _CoordCodec.transport_basis(B_new, st.X, X_new)
+        p_sigma_new = T @ p_sigma_old
+        p_c_new = T @ p_c_old
 
         # Commit new state
         self.state = _State(

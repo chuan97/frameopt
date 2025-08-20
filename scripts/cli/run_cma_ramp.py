@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_cma_ramp.py  –  Pure Projection-CMA with a p-exponent ramp.
+run_cma_ramp.py  –  CMA-ES with p-exponent ramp (projection or riemannian).
 
 Run a single CMA-ES instance (no restarts) while progressively increasing the
 exponent *p* used in the differentiable coherence objective.
@@ -20,6 +20,10 @@ Example
 $ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --scheduler fixed \
       --p0 2 --p-mult 1.5 --switch-every 200 --p-max 80
 
+# Riemannian CMA (periodic)
+$ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --algo riemannian --scheduler fixed \
+      --p0 2 --p-mult 1.5 --switch-every 200 --p-max 80
+
 # Adaptive scheduler (budgeted, constant window)
 $ python run_cma_ramp.py -n 30 -d 4 --gen 1000 --scheduler adaptive \
       --p0 2 --p-max 1e6 --window 100
@@ -34,7 +38,7 @@ import numpy as np
 
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
-from evomof.optim.cma import ProjectionCMA
+from evomof.optim.cma import ProjectionCMA, RiemannianCMA
 from evomof.optim.utils.p_scheduler import (
     AdaptivePScheduler,
     FixedPScheduler,
@@ -55,6 +59,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("-d", type=int, default=4, help="Ambient dimension")
     p.add_argument("--gen", type=int, default=500, help="Total CMA generations")
     p.add_argument("--sigma0", type=float, default=0.5, help="Initial CMA sigma")
+    p.add_argument(
+        "--algo",
+        type=str,
+        choices=("projection", "riemannian"),
+        default="riemannian",
+        help="Which CMA variant to run: projection or riemannian",
+    )
     p.add_argument(
         "--popsize",
         type=int,
@@ -153,15 +164,29 @@ def main() -> None:
             f"[scheduler] adaptive: p0={args.p0}, window={args.window}, p_max={args.p_max}, total_steps={args.gen}"
         )
     p_exp = sched.current_p()
-    cma = ProjectionCMA(
-        n=args.n,
-        d=args.d,
-        sigma0=args.sigma0,
-        popsize=popsize,
-        energy_fn=diff_coherence,
-        energy_kwargs={"p": p_exp},  # used only if user calls convenience wrappers
-        seed=args.seed,
-    )
+
+    if args.algo == "projection":
+        cma = ProjectionCMA(
+            n=args.n,
+            d=args.d,
+            sigma0=args.sigma0,
+            popsize=popsize,
+            energy_fn=diff_coherence,
+            energy_kwargs={"p": p_exp},
+            seed=args.seed,
+        )
+        print("[algo] projection CMA")
+    else:  # riemannian
+        cma = RiemannianCMA(
+            n=args.n,
+            d=args.d,
+            sigma0=args.sigma0,
+            popsize=popsize,
+            energy_fn=diff_coherence,
+            energy_kwargs={"p": p_exp},
+            seed=args.seed,
+        )
+        print("[algo] riemannian CMA")
 
     # Best frame/energy tracked under *current* p
     best_frame = Frame.random(args.n, args.d, rng=rng)
@@ -199,6 +224,14 @@ def main() -> None:
 
         # Log metrics
         elapsed = time.perf_counter() - t0
+
+        sigma_val = getattr(cma, "sigma", None)
+        mean_vec = getattr(cma, "mean", None)
+        sigma_f = float(sigma_val) if sigma_val is not None else float("nan")
+        mean_norm = (
+            float(np.linalg.norm(mean_vec)) if mean_vec is not None else float("nan")
+        )
+
         metrics.append(
             {
                 "gen": gen,
@@ -208,8 +241,9 @@ def main() -> None:
                 "gen_best_coh": gen_best_coh,
                 "best_diff_coh": best_energy,
                 "best_coh": global_best_coh,
-                "sigma": cma.sigma,
-                "mean_norm": float(np.linalg.norm(cma.mean)),
+                "sigma": sigma_f,
+                "mean_norm": mean_norm,
+                "algo": args.algo,
             }
         )
 
