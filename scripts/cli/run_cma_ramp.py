@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
         "--algo",
         type=str,
         choices=("projection", "riemannian"),
-        default="riemannian",
+        default="projection",
         help="Which CMA variant to run: projection or riemannian",
     )
     p.add_argument(
