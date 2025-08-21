@@ -147,11 +147,12 @@ class RiemannianCMAConfig:
         transport_eigs (bool): Whether to transport eigenvectors to new mean frame.
         auto_hyper (bool): If True, set CMA learning rates
             (c_sigma, d_sigma, c_c, c1, c_mu) from dimension-dependent defaults at init.
+        active_warmup (int): Generations to wait before enabling active CMA.
     """
 
     popsize: int = 32  # λ
     parents: int = 16  # μ
-    sigma0: float = 0.1
+    sigma0: float = 0.5
 
     c_sigma: float = 0.3
     d_sigma: float = 1.0
@@ -160,12 +161,13 @@ class RiemannianCMAConfig:
     c1: float = 2e-2  # learning rate rank-1
     c_mu: float = 3e-2  # learning rate rank-μ
 
-    use_active: bool = True  # negative weights (active CMA)
+    use_active: bool = False  # negative weights (active CMA)
     seed: int = 0
     jitter: float = 1e-12
 
     transport_eigs: bool = True  # transport eigenvectors to new mean
     auto_hyper: bool = True
+    active_warmup: int = 1000  # generations to wait before enabling active CMA
 
 
 @dataclass
@@ -208,7 +210,7 @@ class RiemannianCMA:
         self,
         n: int,
         d: int,
-        sigma0: float = 0.1,
+        sigma0: float = 0.3,
         start_frame: Optional[Frame] = None,
         popsize: Optional[int] = None,
         seed: Optional[int] = None,
@@ -241,6 +243,7 @@ class RiemannianCMA:
         self.state = self._init_state(start_frame)
         self._E_norm = _chi_mean(self.k)
         self._last_steps: List[np.ndarray] = []
+        self._iter: int = 0
 
     # dimension helpers
     @property
@@ -366,6 +369,7 @@ class RiemannianCMA:
             energies (np.ndarray): Array of energy values corresponding to
                 each candidate.
         """
+        self._iter += 1
         st, cfg = self.state, self.cfg
         lam = len(candidates)
         order = np.argsort(energies)
@@ -406,8 +410,11 @@ class RiemannianCMA:
             yj = Y_sel[:, j]
             C_old += cμ * w_pos[j] * np.outer(yj, yj)
 
-        # Active (negative) weights — PSD-safe scaling
-        if cfg.use_active and lam > mu:
+        # Active (negative) weights — PSD-safe scaling with warmup gating
+        use_active_now = (
+            cfg.use_active and (self._iter >= cfg.active_warmup) and (lam > mu)
+        )
+        if use_active_now:
             neg_idx = order[mu:]
             Y_neg = np.stack([self._last_steps[i] for i in neg_idx], axis=1)  # k×(λ-μ)
             w_neg = W[mu:]
