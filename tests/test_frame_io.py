@@ -1,5 +1,6 @@
 import numpy as np
 
+from evomof.core.energy import coherence
 from evomof.core.frame import Frame
 
 
@@ -22,37 +23,50 @@ def test_save_load_npy(tmp_path):
     np.testing.assert_allclose(loaded.vectors, frame.vectors, atol=1e-15, rtol=0)
 
 
-def test_export_txt(tmp_path):
+def test_load_txt_roundtrip(tmp_path):
     """
-    Exporting a Frame to text and reading it back should reproduce
-    the same vector entries.
+    Exporting a Frame to txt and loading it back using Frame.load_txt
+    should reproduce the same Frame with matching vectors.
     """
-    rng = np.random.default_rng(42)
-    n, d = 3, 2
+    rng = np.random.default_rng(99)
+    n, d = 4, 3
     frame = Frame.random(n=n, d=d, rng=rng)
 
     # Export to txt
-    tag = "test"
-    filename = f"{d}x{n}_{tag}.txt"
+    filename = f"frame_{n}x{d}.txt"
     txt_path = tmp_path / filename
     frame.export_txt(str(txt_path))
 
-    # Read lines
-    lines = txt_path.read_text().splitlines()
-    expected_lines = 2 * n * d
-    assert (
-        len(lines) == expected_lines
-    ), f"Expected {expected_lines} lines, got {len(lines)}"
+    # Load back
+    loaded = Frame.load_txt(str(txt_path), n=n, d=d)
+    assert isinstance(loaded, Frame)
+    np.testing.assert_allclose(loaded.vectors, frame.vectors)
+    assert np.isclose(coherence(loaded), coherence(frame))
 
-    # Parse floats
-    vals = np.array([float(line) for line in lines])
-    real_vals = vals[: n * d]
-    imag_vals = vals[n * d :]
 
-    # Reconstruct in row-major (order='C')
-    reconstructed = real_vals.reshape((n, d), order="C") + 1j * imag_vals.reshape(
-        (n, d), order="C"
-    )
+def test_npy_txt_consistency(tmp_path):
+    """
+    Saving a Frame to both .npy and .txt formats and loading them back
+    should produce Frames with consistent vectors and coherence values.
+    """
+    rng = np.random.default_rng(2024)
+    n, d = 6, 3
+    frame = Frame.random(n=n, d=d, rng=rng)
 
-    # Compare
-    np.testing.assert_allclose(reconstructed, frame.vectors)
+    # Save to .npy
+    npy_path = tmp_path / "frame.npy"
+    frame.save_npy(str(npy_path))
+
+    # Save to .txt
+    txt_path = tmp_path / "frame.txt"
+    frame.export_txt(str(txt_path))
+
+    # Load back
+    loaded_npy = Frame.load_npy(str(npy_path))
+    loaded_txt = Frame.load_txt(str(txt_path), n=n, d=d)
+
+    assert isinstance(loaded_npy, Frame)
+    assert isinstance(loaded_txt, Frame)
+
+    np.testing.assert_allclose(loaded_npy.vectors, loaded_txt.vectors)
+    assert np.isclose(coherence(loaded_npy), coherence(loaded_txt))
