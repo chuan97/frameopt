@@ -416,8 +416,14 @@ def main() -> None:
                     else ""
                 ),
                 "best_frame_txt": (
-                    str((run_dir / "best_frame.txt").relative_to(out_root))
-                    if (run_dir / "best_frame.txt").exists()
+                    str(
+                        (
+                            run_dir / f"{cfg.problem['d']}x{cfg.problem['n']}_jrr.txt"
+                        ).relative_to(out_root)
+                    )
+                    if (
+                        run_dir / f"{cfg.problem['d']}x{cfg.problem['n']}_jrr.txt"
+                    ).exists()
                     else ""
                 ),
                 "log_file": str((run_dir / "run.log").relative_to(out_root)),
