@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,27 @@ try:
     import mpmath as mp
 except Exception:
     mp = None  # optional; only used if --mp-dps > 0
+
+
+FNAME_RE = re.compile(r"(\d+)x(\d+)_\w{1,4}\.txt$")
+
+
+def load_txt_submission(path: Path, d: int, n: int) -> np.ndarray:
+    """Load a submission-format .txt file into a complex (n, d) array.
+
+    The file must contain exactly 2*d*n floats: first all real parts (vector-by-vector,
+    component-by-component), then all imaginary parts, one number per line.
+    """
+    data = np.loadtxt(path, dtype=float)
+    expected = 2 * d * n
+    if data.size != expected:
+        raise ValueError(
+            f"Expected {expected} entries for d={d}, n={n}; got {data.size}."
+        )
+    # First d*n are reals, next d*n are imags; reshape as (n, d)
+    reals = data[: d * n].reshape(n, d)
+    imags = data[d * n :].reshape(n, d)
+    return (reals + 1j * imags).astype(np.complex128, copy=False)
 
 
 def sha256_file(path: Path) -> str:
@@ -42,12 +64,13 @@ def sha256_file(path: Path) -> str:
 
 def load_frame(path: Path) -> np.ndarray:
     """
-    Load a frame from a .npy file.
+    Load a frame from a .npy or .txt file.
 
     Parameters
     ----------
     path : Path
-        Path to a NumPy `.npy` file containing a 2‑D array of shape (n, d), real or complex.
+        Path to a NumPy `.npy` file containing a 2‑D array of shape (n, d), real or complex,
+        or a submission-format `.txt` file containing 2*d*n floats as reals then imaginaries.
 
     Returns
     -------
@@ -55,6 +78,14 @@ def load_frame(path: Path) -> np.ndarray:
         Array with dtype complex128 and shape (n, d). Values are not modified beyond dtype casting.
     """
     suffix = path.suffix.lower()
+    if suffix == ".txt":
+        m = FNAME_RE.search(path.name)
+        if not m:
+            raise ValueError(
+                "Txt filename must be like 'dxn_xxx.txt' (e.g. '4x6_init.txt'), with a 3–4 char suffix."
+            )
+        d, n = map(int, m.groups())
+        return load_txt_submission(path, d=d, n=n)
     if suffix != ".npy":
         raise ValueError(
             f"Unsupported file extension: {suffix}. Only .npy is supported."
@@ -229,7 +260,7 @@ def parse_args() -> argparse.Namespace:
         description="Verify frame coherence from .npy with optional high-precision check.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    ap.add_argument("input", type=str, help="Path to frame (.npy)")
+    ap.add_argument("input", type=str, help="Path to frame (.npy or .txt)")
     ap.add_argument(
         "--mp-dps", type=int, default=0, help="mpmath precision (0 to skip)"
     )
@@ -286,11 +317,12 @@ def main() -> None:
     print(f"file         : {path}")
     print(f"sha256       : {sha256_file(path)}")
     print(f"shape (n,d)  : ({F.shape[0]}, {F.shape[1]})")
-    print(f"coherence64  : {mu64:.12g} @ pair {argmax_pair}")
+    print(f"coherence64  : {mu64:.17g} @ pair {argmax_pair}")
     print(f"coherence64_8dp: {mu64:.8f}")
-    print(f"second_largest: {mu2:.12g}")
+    print(f"second_largest: {mu2:.17g}")
     if mu_mp is not None:
-        print(f"coherence_mp : {mu_mp:.12g}  (dps={args.mp_dps})")
+        mp_str = mp.nstr(mu_mp, args.mp_dps)
+        print(f"coherence_mp : {mp_str}  (dps={args.mp_dps})")
         print(f"coherence_mp_8dp: {mu_mp:.8f}")
         delta = abs(mu_mp - mu64)
         print(f"delta(mp-64) : {delta:.3e}")
@@ -300,7 +332,7 @@ def main() -> None:
     if args.report_k > 0:
         print(f"top-{args.report_k} pairs:")
         for val, (i, j) in topk:
-            print(f"  ({i:>3d},{j:>3d}) -> {val:.12g}")
+            print(f"  ({i:>3d},{j:>3d}) -> {val:.17g}")
 
     # ---- Optional JSON ----
     json_path: Path | None = None
