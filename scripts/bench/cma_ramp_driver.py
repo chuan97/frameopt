@@ -206,7 +206,7 @@ def _build_cmd(
     if save_metrics:
         cmd += ["--log-file", str(out_dir / "cma_metrics.csv")]
     if save_npy:
-        cmd += ["--export-npy", str(out_dir / f"{d}x{n}_jrr.npy")]
+        cmd += ["--export-npy", str(out_dir / "best_frame.npy")]
     if save_txt:
         cmd += ["--export-txt", str(out_dir / f"{d}x{n}_jrr.txt")]
 
