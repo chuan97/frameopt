@@ -7,21 +7,25 @@
 # Bytecode and metadata
 __pycache__/
 *.py[cod]
-*.egg-info/
 *.log
 
 # Hatch / build
 dist/
 build/
+*.egg-info/
 
-# Conda / virtualenv
+# Envs
 .venv/
+.venv-verify/
 .env/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
 # Results
 results/
 
 # Experiments
-scripts/bench/*_config.json
-!scripts/bench/reference_*_config.json
-analysis/notebooks/
+scripts/experiments/*_config.json
