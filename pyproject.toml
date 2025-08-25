@@ -39,6 +39,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+ignore = ["E501"]  # line length
 
 [tool.mypy]
 python_version = "3.11"
@@ -56,6 +57,12 @@ ignore_missing_imports = true
 module = "pymanopt.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "scripts.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+
 [tool.pytest.ini_options]
 filterwarnings = [
   "ignore:Could not import matplotlib\\.pyplot.*:UserWarning:cma\\.s",
@@ -66,7 +73,7 @@ path = ".venv"
 features = ["dev", "suite"]
 
 [tool.hatch.envs.default.scripts]
-lint = "ruff check src tests && black --check src tests"
+lint = "ruff check src tests scripts && black --check src tests scripts"
 test = "pytest -q"
 typecheck = "mypy -p evomof"
 bench = "python scripts/bench/quick_energy_benchmark.py"

@@ -43,7 +43,7 @@ def _git_sha(repo_root: Path) -> str:
         raise RuntimeError(
             f"Unable to read git commit hash in repo root {repo_root}.\n"
             f"Are you running inside a git checkout? Original error: {e}"
-        )
+        ) from e
 
 
 def _assert_git_clean(repo_root: Path) -> None:
@@ -71,7 +71,7 @@ def _assert_git_clean(repo_root: Path) -> None:
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"Git check failed. Are you inside a git repo at {repo_root}? {e}"
-        )
+        ) from e
 
 
 # ------------------------------ config model ------------------------------ #
