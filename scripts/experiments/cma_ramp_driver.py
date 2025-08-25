@@ -11,6 +11,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
+import numpy as np
+import yaml
+
+from evomof.core.energy import coherence, diff_coherence
+from evomof.core.frame import Frame
+from evomof.optim.cma import ProjectionCMA, RiemannianCMA
+from evomof.optim.utils.p_scheduler import (
+    AdaptivePScheduler,
+    FixedPScheduler,
+    Scheduler,
+)
+
 # ------------------------------- helpers ---------------------------------- #
 
 
@@ -69,7 +81,9 @@ def _assert_git_clean(repo_root: Path) -> None:
 class ExperimentConfig:
     experiment: str
     problem: Dict[str, Any]  # {"n": int, "d": int}
-    cma: Dict[str, Any]  # {"gen": int, "sigma0": float, "popsize": int, ...}
+    cma: Dict[
+        str, Any
+    ]  # {"gen": int, "sigma0": float, "popsize": int, "algo": "projection"|"riemannian"}
     scheduler: Dict[str, Any]  # {"mode": "fixed"|"adaptive", ... params ...}
     seeds: Dict[str, Any]  # {"list":[...]} OR {"count":int, "start":int}
     logging: Dict[str, Any] | None = None  # {"save_metrics": bool}
@@ -80,7 +94,9 @@ class ExperimentConfig:
 
     @staticmethod
     def load(path: Path) -> "ExperimentConfig":
-        data = json.loads(path.read_text())
+        data = yaml.safe_load(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError(f"Config file {path} did not parse to a mapping.")
         for k in ("experiment", "problem", "cma", "scheduler", "seeds"):
             if k not in data:
                 raise ValueError(f"Missing required key '{k}' in {path}")
@@ -88,16 +104,6 @@ class ExperimentConfig:
 
 
 # ------------------------------ driver core -------------------------------- #
-
-
-def _resolve_cli_path(this_file: Path) -> Path:
-    # this file: repo/scripts/experiments/cma_ramp_driver.py
-    # cli file : repo/scripts/cli/run_cma_ramp.py
-    repo_root = this_file.parents[2]
-    cli = repo_root / "scripts" / "cli" / "run_cma_ramp.py"
-    if not cli.exists():
-        raise FileNotFoundError(f"Could not find run_cma_ramp.py at {cli}")
-    return cli
 
 
 def _resolve_verify_cli(this_file: Path) -> Path:
@@ -112,23 +118,23 @@ def _resolve_verify_cli(this_file: Path) -> Path:
 
 def _discover_config(this_file: Path) -> Path:
     """
-    Look for a JSON config next to the driver:
-        <stem>_driver.py  ->  <stem>_config.json
+    Look for a YAML config next to the driver:
+        <stem>_driver.py  ->  <stem>_config.yaml
 
     Examples:
-      cma_ramp_driver.py -> cma_ramp_config.json
-      foo_driver.py      -> foo_config.json
+      cma_ramp_driver.py -> cma_ramp_config.yaml
+      foo_driver.py      -> foo_config.yaml
     """
     base = this_file.stem  # e.g., "cma_ramp_driver"
     if base.endswith("_driver"):
         base = base[: -len("_driver")]
-    cfg_name = f"{base}_config.json"
+    cfg_name = f"{base}_config.yaml"
     cfg_path = this_file.with_name(cfg_name)
     if not cfg_path.exists():
         raise FileNotFoundError(
             f"Config not found: {cfg_path}\n"
-            "Place a JSON config alongside the driver with the same base name, "
-            "ending in _config.json."
+            "Place a YAML config alongside the driver with the same base name, "
+            "ending in _config.yaml."
         )
     return cfg_path
 
@@ -141,76 +147,152 @@ def _seeds_from_cfg(seeds_cfg: Dict[str, Any]) -> List[int]:
     return [start + i for i in range(count)]
 
 
-def _build_cmd(
-    py: str,
-    cli_path: Path,
-    cfg: ExperimentConfig,
-    seed: int,
-    out_dir: Path,
-) -> list[str]:
-    n = int(cfg.problem["n"])
-    d = int(cfg.problem["d"])
+# --------------------------- in-process CMA runner --------------------------- #
 
-    gen = int(cfg.cma.get("gen", 0))
-    sigma0 = float(cfg.cma.get("sigma0", 0.3))
-    popsize = int(cfg.cma.get("popsize", 40))
 
-    sched = cfg.scheduler
-    mode = str(sched.get("mode", "adaptive"))
-    p0 = float(sched.get("p0", 2.0))
-    p_max = float(sched.get("p_max", 1e9))
+def run_cma_ramp(
+    *,
+    n: int,
+    d: int,
+    gen: int,
+    sigma0: float,
+    popsize: int | None,
+    algo: str,
+    scheduler_cfg: Dict[str, Any],
+    seed: int | None,
+) -> tuple[Frame, list[dict], float]:
+    rng = np.random.default_rng(seed)
 
-    cmd = [
-        py,
-        str(cli_path),
-        "-n",
-        str(n),
-        "-d",
-        str(d),
-        "--gen",
-        str(gen),
-        "--sigma0",
-        str(sigma0),
-        "--popsize",
-        str(popsize),
-        "--scheduler",
-        mode,
-        "--p0",
-        str(p0),
-        "--p-max",
-        str(p_max),
-        "--seed",
-        str(seed),
-    ]
+    # Resolve population size default
+    if popsize in (None, 0):
+        dim = 2 * n * d
+        popsize_eff = 4 + int(3 * np.log(dim))
+        print(f"[popsize] Using default λ={popsize_eff} for dim={dim}")
+    else:
+        popsize_eff = int(popsize)
 
-    # scheduler-specific fields
+    # Build p-scheduler (Fixed or Adaptive)
+    mode = str(scheduler_cfg.get("mode", "adaptive"))
+    p0 = float(scheduler_cfg.get("p0", 2.0))
+    p_max = float(scheduler_cfg.get("p_max", 1e9))
     if mode == "fixed":
-        if "p_mult" in sched:
-            cmd += ["--p-mult", str(float(sched["p_mult"]))]
-        if "switch_every" in sched:
-            cmd += ["--switch-every", str(int(sched["switch_every"]))]
+        switch_every = scheduler_cfg.get("switch_every", 200)
+        switch_every = int(switch_every) if switch_every and switch_every > 0 else None
+        p_mult = float(scheduler_cfg.get("p_mult", 1.5))
+        sched: Scheduler = FixedPScheduler(
+            p0=p0, p_mult=p_mult, p_max=p_max, switch_every=switch_every
+        )
+        print(
+            f"[scheduler] fixed: p0={p0}, p_mult={p_mult}, switch_every={switch_every}, p_max={p_max}"
+        )
     elif mode == "adaptive":
-        if "window" not in sched:
-            raise ValueError(
-                "scheduler.mode='adaptive' requires 'window' in scheduler config"
-            )
-        cmd += ["--window", str(int(sched["window"]))]
+        window = int(scheduler_cfg.get("window", 100))
+        sched = AdaptivePScheduler(p0=p0, p_max=p_max, total_steps=gen, window=window)
+        print(
+            f"[scheduler] adaptive: p0={p0}, window={window}, p_max={p_max}, total_steps={gen}"
+        )
     else:
         raise ValueError(f"Unknown scheduler mode: {mode}")
 
-    # outputs from CLI
-    save_metrics = bool((cfg.logging or {}).get("save_metrics", True))
-    save_npy = bool((cfg.exports or {}).get("save_npy", True))
-    save_txt = bool((cfg.exports or {}).get("save_txt", False))
+    p_exp = sched.current_p()
 
-    if save_metrics:
-        cmd += ["--log-file", str(out_dir / "cma_metrics.csv")]
-    if save_npy:
-        cmd += ["--export-npy", str(out_dir / "best_frame.npy")]
-    if save_txt:
-        cmd += ["--export-txt", str(out_dir / f"{d}x{n}_jrr.txt")]
+    # Instantiate CMA variant
+    if algo == "projection":
+        cma = ProjectionCMA(
+            n=n,
+            d=d,
+            sigma0=sigma0,
+            popsize=popsize_eff,
+            energy_fn=diff_coherence,
+            energy_kwargs={"p": p_exp},
+            seed=seed,
+        )
+        print("[algo] projection CMA")
+    elif algo == "riemannian":
+        cma = RiemannianCMA(
+            n=n,
+            d=d,
+            sigma0=sigma0,
+            popsize=popsize_eff,
+            energy_fn=diff_coherence,
+            energy_kwargs={"p": p_exp},
+            seed=seed,
+        )
+        print("[algo] riemannian CMA")
+    else:
+        raise ValueError(
+            f"Unknown algo '{algo}'. Expected 'projection' or 'riemannian'."
+        )
 
-    return cmd
+    # Initialize bests
+    best_frame = Frame.random(n, d, rng=rng)
+    best_energy = diff_coherence(best_frame, p=p_exp)
+    global_best_frame = best_frame
+    global_best_coh = float(coherence(best_frame))
+
+    metrics: list[dict] = []
+    t0 = time.perf_counter()
+
+    for g in range(1, gen + 1):
+        population = cma.ask()
+        energies = [diff_coherence(F, p=p_exp) for F in population]
+
+        idx = int(np.argmin(energies))
+        gen_best_energy = float(energies[idx])
+        gen_best_frame = population[idx]
+        gen_best_coh = float(coherence(gen_best_frame))
+
+        if gen_best_energy < best_energy:
+            best_energy = gen_best_energy
+            best_frame = gen_best_frame
+
+        if gen_best_coh < global_best_coh:
+            global_best_coh = gen_best_coh
+            global_best_frame = gen_best_frame
+
+        cma.tell(population, energies)
+
+        elapsed = time.perf_counter() - t0
+        sigma_val = getattr(cma, "sigma", None)
+        mean_vec = getattr(cma, "mean", None)
+        sigma_f = float(sigma_val) if sigma_val is not None else float("nan")
+        mean_norm = (
+            float(np.linalg.norm(mean_vec)) if mean_vec is not None else float("nan")
+        )
+
+        metrics.append(
+            {
+                "gen": g,
+                "elapsed_time": elapsed,
+                "p": p_exp,
+                "gen_best_diff_coh": gen_best_energy,
+                "gen_best_coh": gen_best_coh,
+                "best_diff_coh": best_energy,
+                "best_coh": global_best_coh,
+                "sigma": sigma_f,
+                "mean_norm": mean_norm,
+                "algo": algo,
+            }
+        )
+
+        p_next, switched = sched.update(step=g, global_best_coh=global_best_coh)
+        if switched:
+            print(f"[p-ramp] Generation {g}: p {p_exp:g} -> {p_next:g}")
+            best_energy = float(diff_coherence(best_frame, p=p_next))
+        p_exp = p_next
+
+        if g % max(gen // 10, 1) == 0:
+            print(
+                f"Gen {g:5d} | p={p_exp:g} | best diff-coh={best_energy:.8f} | coherence={global_best_coh:.8f}"
+            )
+
+    runtime = time.perf_counter() - t0
+    print(
+        f"Finished {gen} generations in {runtime:.2f}s | final p={p_exp:g} | "
+        f"best diff-coh (current p) {best_energy:.6e} | global best coherence {global_best_coh:.10f}"
+    )
+
+    return global_best_frame, metrics, runtime
 
 
 def _run_verifier(
@@ -308,7 +390,6 @@ def _run_verifier(
 def main() -> None:
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
-    cli_path = _resolve_cli_path(this_file)
     verify_cli = _resolve_verify_cli(this_file)
     cfg_path = _discover_config(this_file)
 
@@ -324,16 +405,20 @@ def main() -> None:
     _ensure_dir(out_root)
 
     # Save augmented config in output root
+    base_cfg = yaml.safe_load(cfg_path.read_text())
+    if not isinstance(base_cfg, dict):
+        raise ValueError(f"Config file {cfg_path} did not parse to a mapping.")
     augmented = {
-        **json.loads(cfg_path.read_text()),
+        **base_cfg,
         "_meta": {
             "git_sha": git_sha,
             "timestamp_utc": ts,
             "driver": str(this_file.relative_to(repo_root)),
-            "cli": str(cli_path.relative_to(repo_root)),
         },
     }
-    (out_root / "config_used.json").write_text(json.dumps(augmented, indent=2))
+    (out_root / "config_used.yaml").write_text(
+        yaml.safe_dump(augmented, sort_keys=False)
+    )
 
     # Seeds
     seeds = _seeds_from_cfg(cfg.seeds)
@@ -348,28 +433,78 @@ def main() -> None:
     for seed in seeds:
         run_dir = out_root / f"seed_{seed:04d}"
         _ensure_dir(run_dir)
-
-        cmd = _build_cmd(sys.executable, cli_path, cfg, seed=seed, out_dir=run_dir)
         print(f"[run] seed={seed} → {run_dir}")
-        print(f"[cmd] {' '.join(cmd)}")
 
-        # Log file (stdout+stderr)
+        # Resolve CMA params
+        n = int(cfg.problem["n"])
+        d = int(cfg.problem["d"])
+        gen = int(cfg.cma.get("gen", 0))
+        if gen <= 0:
+            raise ValueError("Config.cma must include positive 'gen' (generations).")
+        sigma0 = float(cfg.cma.get("sigma0", 0.5))
+        popsize = cfg.cma.get("popsize", None)
+        algo = str(cfg.cma.get("algo", "projection"))
+
+        # Determine logging/export flags
+        save_metrics = bool((cfg.logging or {}).get("save_metrics", True))
+        save_npy = bool((cfg.exports or {}).get("save_npy", True))
+        save_txt = bool((cfg.exports or {}).get("save_txt", False))
+
+        # Log file
         log_path = run_dir / "run.log"
         t0 = time.time()
-        with log_path.open("w") as logf:
-            rc = subprocess.call(
-                cmd, stdout=logf, stderr=subprocess.STDOUT, cwd=str(repo_root)
-            )
+        # Run CMA-ES in-process
+        best_frame, metrics, _runtime = run_cma_ramp(
+            n=n,
+            d=d,
+            gen=gen,
+            sigma0=sigma0,
+            popsize=(
+                int(popsize)
+                if popsize not in (None, 0) and popsize is not None
+                else None
+            ),
+            algo=algo,
+            scheduler_cfg=cfg.scheduler,
+            seed=seed,
+        )
         dt = time.time() - t0
 
+        # Write metrics CSV if requested
+        if save_metrics and metrics:
+            with (run_dir / "cma_metrics.csv").open("w", newline="") as fh:
+                w = csv.DictWriter(fh, fieldnames=list(metrics[0].keys()))
+                w.writeheader()
+                w.writerows(metrics)
+        # Write best_frame.npy if requested
+        if save_npy:
+            best_frame.save_npy(run_dir / "best_frame.npy")
+        # Write best_frame.txt if requested
+        if save_txt:
+            best_frame.export_txt(run_dir / f"{d}x{n}_jrr.txt")
+        # Write run.log (summary)
+        with log_path.open("w") as logf:
+            logf.write(f"Seed: {seed}\n")
+            logf.write(f"Runtime: {dt:.3f} s\n")
+            logf.write(
+                f"n={n}, d={d}, gen={gen}, sigma0={sigma0}, popsize={popsize}, algo={algo}\n"
+            )
+            if metrics:
+                logf.write(f"Final best coherence: {metrics[-1]['best_coh']:.10f}\n")
         # Per-seed meta
         (run_dir / "run_meta.json").write_text(
             json.dumps(
                 {
                     "seed": seed,
-                    "return_code": rc,
                     "runtime_sec": round(dt, 3),
-                    "cmd": cmd,
+                    "gen": gen,
+                    "algo": algo,
+                    "sigma0": sigma0,
+                    "popsize": (
+                        int(popsize)
+                        if popsize not in (None, 0) and popsize is not None
+                        else None
+                    ),
                 },
                 indent=2,
             )
@@ -401,7 +536,7 @@ def main() -> None:
         summary_rows.append(
             {
                 "seed": seed,
-                "return_code": rc,
+                "return_code": 0,
                 "runtime_sec": round(dt, 3),
                 "certificate_json": cert_json_rel,
                 "best_coherence_8dp": coh8,
@@ -429,8 +564,7 @@ def main() -> None:
                 "log_file": str((run_dir / "run.log").relative_to(out_root)),
             }
         )
-        status = "OK" if rc == 0 else f"rc={rc}"
-        print(f"[done] seed={seed} | {status} | {dt:.2f}s")
+        print(f"[done] seed={seed} | OK | {dt:.2f}s")
 
     # Write summary
     if summary_rows:
