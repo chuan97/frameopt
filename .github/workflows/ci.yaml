@@ -37,6 +37,3 @@ jobs:
 
       - name: Run tests
         run: hatch run test
-
-      - name: Run benchmark
-        run: hatch run bench
