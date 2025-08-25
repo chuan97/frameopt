@@ -1,6 +1,6 @@
 # evomof
 
-![CI](https://github.com/chuan97/evomof/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/chuan97/evomof/actions/workflows/ci.yaml/badge.svg)
 
 Optimization tools for the numerical construction of maximally orthogonal frames (MOFs), 
 in particular Grassmannian frames/optimal packings in complex space.
