@@ -36,10 +36,14 @@ target-version = ["py311"]
 
 [tool.ruff]
 line-length = 88
+target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B"]
+select = ["E", "F", "I", "B", "UP", "PERF"]
 ignore = ["E501"]  # line length
+
+[tool.ruff.lint.isort]
+known-first-party = ["evomof"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -50,18 +54,8 @@ module = "cma.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "pymanopt"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "pymanopt.*"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "scripts.*"
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-warn_return_any = false
 
 [tool.pytest.ini_options]
 filterwarnings = [

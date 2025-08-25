@@ -245,9 +245,9 @@ def topk_pairs(
     idx = np.argpartition(off, -k)[-k:]
     # sort descending
     idx = idx[np.argsort(off[idx])[::-1]]
-    out: list[tuple[float, tuple[int, int]]] = []
-    for t in idx:
-        out.append((float(off[t]), (int(iu[0][t]), int(iu[1][t]))))
+    out: list[tuple[float, tuple[int, int]]] = [
+        (float(off[t]), (int(iu[0][t]), int(iu[1][t]))) for t in idx
+    ]
     return out
 
 

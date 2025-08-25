@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import typing
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator, Tuple
 
 import numpy as np
 
@@ -96,7 +96,7 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     @property
-    def shape(self) -> Tuple[int, int]:
+    def shape(self) -> tuple[int, int]:
         return self.vectors.shape
 
     @property
@@ -430,7 +430,7 @@ class Frame:
         Frame
             A Frame initialized from the loaded array.
         """
-        with open(path, "r") as f:
+        with open(path) as f:
             lines = f.readlines()
         nums = np.array([float(line.strip()) for line in lines], dtype=np.float64)
         if nums.size != 2 * n * d:

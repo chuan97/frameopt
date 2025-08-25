@@ -27,7 +27,7 @@ Two concrete implementations satisfy the protocol:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, Tuple
+from typing import Protocol
 
 __all__ = [
     "Scheduler",
@@ -110,7 +110,7 @@ class FixedPScheduler:
     def current_p(self) -> float:
         return self.p
 
-    def update(self, *, step: int, global_best_coh: float) -> Tuple[float, bool]:
+    def update(self, *, step: int, global_best_coh: float) -> tuple[float, bool]:
         if self.switch_every is None:
             return self.p, False
         if (step - self.last_switch_step) >= self.switch_every:
@@ -177,7 +177,7 @@ class AdaptivePScheduler:
     def current_p(self) -> float:
         return self.p
 
-    def update(self, *, step: int, global_best_coh: float) -> Tuple[float, bool]:
+    def update(self, *, step: int, global_best_coh: float) -> tuple[float, bool]:
         # enforce driver bounds
         if step > self.total_steps:
             raise ValueError("AdaptivePScheduler.update called with step > total_steps")

@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import yaml
@@ -57,7 +57,7 @@ def _assert_git_clean(repo_root: Path) -> None:
         subprocess.check_output(
             ["git", "rev-parse", "--is-inside-work-tree"], cwd=str(repo_root), text=True
         )
-        # List tracked changes only (ignore untracked). Non-empty means dirty.
+        # list tracked changes only (ignore untracked). Non-empty means dirty.
         status = subprocess.check_output(
             ["git", "status", "--porcelain", "--untracked-files=no"],
             cwd=str(repo_root),
@@ -80,20 +80,20 @@ def _assert_git_clean(repo_root: Path) -> None:
 @dataclass
 class ExperimentConfig:
     experiment: str
-    problem: Dict[str, Any]  # {"n": int, "d": int}
-    cma: Dict[
+    problem: dict[str, Any]  # {"n": int, "d": int}
+    cma: dict[
         str, Any
     ]  # {"gen": int, "sigma0": float, "popsize": int, "algo": "projection"|"riemannian"}
-    scheduler: Dict[str, Any]  # {"mode": "fixed"|"adaptive", ... params ...}
-    seeds: Dict[str, Any]  # {"list":[...]} OR {"count":int, "start":int}
-    logging: Dict[str, Any] | None = None  # {"save_metrics": bool}
-    exports: Dict[str, Any] | None = None  # {"save_npy": bool, "save_txt": bool}
-    certify: Dict[str, Any] | None = (
+    scheduler: dict[str, Any]  # {"mode": "fixed"|"adaptive", ... params ...}
+    seeds: dict[str, Any]  # {"list":[...]} OR {"count":int, "start":int}
+    logging: dict[str, Any] | None = None  # {"save_metrics": bool}
+    exports: dict[str, Any] | None = None  # {"save_npy": bool, "save_txt": bool}
+    certify: dict[str, Any] | None = (
         None  # {"enabled": bool, "mp_dps": int, "mp_topk": int}
     )
 
     @staticmethod
-    def load(path: Path) -> "ExperimentConfig":
+    def load(path: Path) -> ExperimentConfig:
         data = yaml.safe_load(path.read_text())
         if not isinstance(data, dict):
             raise ValueError(f"Config file {path} did not parse to a mapping.")
@@ -139,7 +139,7 @@ def _discover_config(this_file: Path) -> Path:
     return cfg_path
 
 
-def _seeds_from_cfg(seeds_cfg: Dict[str, Any]) -> List[int]:
+def _seeds_from_cfg(seeds_cfg: dict[str, Any]) -> list[int]:
     if "list" in seeds_cfg and isinstance(seeds_cfg["list"], list):
         return [int(s) for s in seeds_cfg["list"]]
     count = int(seeds_cfg.get("count", 1))
@@ -158,7 +158,7 @@ def run_cma_ramp(
     sigma0: float,
     popsize: int | None,
     algo: str,
-    scheduler_cfg: Dict[str, Any],
+    scheduler_cfg: dict[str, Any],
     seed: int | None,
 ) -> tuple[Frame, list[dict], float]:
     rng = np.random.default_rng(seed)
@@ -382,7 +382,7 @@ def _run_verifier(
         print(f"[ver] seed={seed} | coherence_8dp={coh8}")
     return (
         cert_path,
-        (float(coh_num) if isinstance(coh_num, (int, float)) else None),
+        (float(coh_num) if isinstance(coh_num, int | float) else None),
         (coh8 if isinstance(coh8, str) else ""),
     )
 
@@ -428,7 +428,7 @@ def main() -> None:
     print(f"[exp] {cfg.experiment} | seeds={seeds}")
 
     # Summary CSV
-    summary_rows: List[Dict[str, Any]] = []
+    summary_rows: list[dict[str, Any]] = []
 
     for seed in seeds:
         run_dir = out_root / f"seed_{seed:04d}"
@@ -473,7 +473,7 @@ def main() -> None:
         # Write metrics CSV if requested
         if save_metrics and metrics:
             with (run_dir / "cma_metrics.csv").open("w", newline="") as fh:
-                w = csv.DictWriter(fh, fieldnames=list(metrics[0].keys()))
+                w = csv.dictWriter(fh, fieldnames=list(metrics[0].keys()))
                 w.writeheader()
                 w.writerows(metrics)
         # Write best_frame.npy if requested
@@ -527,7 +527,7 @@ def main() -> None:
             )
             if cert_path:
                 cert_json_rel = str(cert_path.relative_to(out_root))
-            if isinstance(coh_num, (int, float)):
+            if isinstance(coh_num, int | float):
                 if best_coh_num is None or float(coh_num) < best_coh_num:
                     best_coh_num = float(coh_num)
                     best_seed = seed
@@ -569,7 +569,7 @@ def main() -> None:
     # Write summary
     if summary_rows:
         with (out_root / "summary.csv").open("w", newline="") as fh:
-            w = csv.DictWriter(fh, fieldnames=list(summary_rows[0].keys()))
+            w = csv.dictWriter(fh, fieldnames=list(summary_rows[0].keys()))
             w.writeheader()
             w.writerows(summary_rows)
         print(f"[summary] {out_root / 'summary.csv'}")
