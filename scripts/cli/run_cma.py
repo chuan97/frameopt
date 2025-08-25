@@ -29,6 +29,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("-n", type=int, default=16, help="Number of frame vectors")
     p.add_argument("-d", type=int, default=4, help="Ambient dimension")
     p.add_argument("-p", type=float, default=40, help="Exponent p for diff-coherence")
+    p.add_argument(
+        "--algo",
+        type=str,
+        choices=("projection", "riemannian"),
+        default="projection",
+        help="Which CMA variant to run: projection or riemannian",
+    )
     p.add_argument("--sigma0", type=float, default=0.3, help="Initial CMA sigma")
     p.add_argument("--popsize", type=int, default=40, help="Population λ")
     p.add_argument("--max-gen", type=int, default=100, help="Maximum generations")
