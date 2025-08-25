@@ -18,6 +18,18 @@ dependencies = [
 ]
 license = { text = "Apache-2.0" }
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+    "mypy",
+]
+suite = [
+    "mpmath",
+    "pyyaml",
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]
@@ -44,24 +56,14 @@ ignore_missing_imports = true
 module = "pymanopt.*"
 ignore_missing_imports = true
 
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:Could not import matplotlib\\.pyplot.*:UserWarning:cma\\.s",
+]
+
 [tool.hatch.envs.default]
 path = ".venv"
-dependencies = [
-    "pytest",
-    "black",
-    "ruff",
-    "mypy",
-]
-post-install = "python -m pip install -e .[dev]"
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
-    "ruff",
-    "mypy",
-]
-verify = ["mpmath>=1.3,<2.0"]
+features = ["dev", "suite"]
 
 [tool.hatch.envs.default.scripts]
 lint = "ruff check src tests && black --check src tests"
@@ -70,7 +72,4 @@ typecheck = "mypy -p evomof"
 bench = "python scripts/bench/quick_benchmark.py"
 all = "hatch run lint ; hatch run typecheck ; hatch run test ; hatch run bench"
 
-[tool.hatch.envs.verify]
-# Separate environment that includes the 'verify' extra (mpmath) only
-path = ".venv-verify"
-features = ["verify"]
+

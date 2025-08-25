@@ -29,3 +29,4 @@ results/
 
 # Experiments
 scripts/experiments/*_config.json
+scripts/experiments/*_config.yaml
