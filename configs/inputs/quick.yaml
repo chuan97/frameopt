@@ -1,4 +1,3 @@
-name: inputs/quick
 seeds: 42
 problems:
   - {d: 2, n: 4}

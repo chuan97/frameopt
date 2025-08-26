@@ -1,4 +1,3 @@
-name: inputs/comp
 seeds: {count: 3, start: 42}
 sweep:
   d: 
