@@ -118,22 +118,24 @@ def _resolve_verify_cli(this_file: Path) -> Path:
 
 def _discover_config(this_file: Path) -> Path:
     """
-    Look for a YAML config next to the driver:
-        <stem>_driver.py  ->  <stem>_config.yaml
+    Look for a YAML config in the repository root under configs/experiments/:
+        <repo_root>/configs/experiments/<base>_config.yaml
 
-    Examples:
-      cma_ramp_driver.py -> cma_ramp_config.yaml
-      foo_driver.py      -> foo_config.yaml
+    <base> is the driver filename (without '_driver' suffix if present).
+
+    Example:
+      scripts/experiments/cma_ramp_driver.py → configs/experiments/cma_ramp_config.yaml
+      scripts/experiments/foo_driver.py      → configs/experiments/foo_config.yaml
     """
-    base = this_file.stem  # e.g., "cma_ramp_driver"
+    repo_root = this_file.parents[2]
+    base = this_file.stem
     if base.endswith("_driver"):
         base = base[: -len("_driver")]
-    cfg_name = f"{base}_config.yaml"
-    cfg_path = this_file.with_name(cfg_name)
+    cfg_path = repo_root / "configs" / "experiments" / f"{base}_config.yaml"
     if not cfg_path.exists():
         raise FileNotFoundError(
             f"Config not found: {cfg_path}\n"
-            "Place a YAML config alongside the driver with the same base name, "
+            "Expected a YAML config at this location, matching the driver filename (without '_driver' suffix), "
             "ending in _config.yaml."
         )
     return cfg_path
@@ -473,7 +475,7 @@ def main() -> None:
         # Write metrics CSV if requested
         if save_metrics and metrics:
             with (run_dir / "cma_metrics.csv").open("w", newline="") as fh:
-                w = csv.dictWriter(fh, fieldnames=list(metrics[0].keys()))
+                w = csv.DictWriter(fh, fieldnames=list(metrics[0].keys()))
                 w.writeheader()
                 w.writerows(metrics)
         # Write best_frame.npy if requested
@@ -569,7 +571,7 @@ def main() -> None:
     # Write summary
     if summary_rows:
         with (out_root / "summary.csv").open("w", newline="") as fh:
-            w = csv.dictWriter(fh, fieldnames=list(summary_rows[0].keys()))
+            w = csv.DictWriter(fh, fieldnames=list(summary_rows[0].keys()))
             w.writeheader()
             w.writerows(summary_rows)
         print(f"[summary] {out_root / 'summary.csv'}")

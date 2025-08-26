@@ -1,0 +1,10 @@
+name: projection/quick
+algo: projection
+objective: diff_coherence
+objective_params: {p: 16}
+budget:
+  unit: evals            # "evals" or "generations"
+  value: 5000
+params:
+  sigma0: 0.5
+  popsize: 21
