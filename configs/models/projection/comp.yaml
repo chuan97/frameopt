@@ -1,0 +1,6 @@
+import: models.projection:ProjectionModel
+init:
+  p: "2 * d"
+  sigma0: 0.5
+  popsize: 21
+  max_gen: 50000

@@ -28,6 +28,7 @@ dev = [
 suite = [
     "mpmath",
     "pyyaml",
+    "types-PyYAML",
 ]
 
 [tool.black]
@@ -67,9 +68,9 @@ path = ".venv"
 features = ["dev", "suite"]
 
 [tool.hatch.envs.default.scripts]
-lint = "ruff check src tests scripts && black --check src tests scripts"
+lint = "ruff check src tests scripts models && black --check src tests scripts models"
 test = "pytest -q"
-typecheck = "mypy -p evomof"
+typecheck = "mypy src/evomof models"
 bench = "python scripts/bench/quick_energy_benchmark.py"
 all = "hatch run lint ; hatch run typecheck ; hatch run test ; hatch run bench"
 

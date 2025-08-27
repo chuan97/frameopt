@@ -1,10 +1,6 @@
-name: projection/quick
-algo: projection
-objective: diff_coherence
-objective_params: {p: 16}
-budget:
-  unit: evals            # "evals" or "generations"
-  value: 5000
-params:
+import: models.projection:ProjectionModel
+init:
+  p: "2 * d"
   sigma0: 0.5
   popsize: 21
+  max_gen: 2000

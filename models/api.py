@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from evomof.core.frame import Frame
+
+Objective = Callable[[Frame], float]
+
+
+@dataclass(frozen=True)
+class Problem:
+    d: int
+    n: int
+
+
+@dataclass
+class Result:
+    best_frame: Frame
+    best_coherence: float
+    n_calls: int
+    wall_time_s: float
+    extras: dict[str, Any]
+
+
+class Model(Protocol):
+    @property
+    def name(self) -> str: ...
+    def run(self, problem: Problem) -> Result: ...
