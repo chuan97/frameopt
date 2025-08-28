@@ -134,10 +134,7 @@ def load_inputs(
         d_cfg = cast(dict[str, Any], sweep["d"])
         n_cfg = cast(dict[str, Any], sweep["n"])
         d_values = _expand_axis(d_cfg, {})
-        for d in d_values:
-            n_values = _expand_axis(n_cfg, {"d": d})
-            for n in n_values:
-                pairs.append((n, d))
+        pairs.extend((n, d) for d in d_values for n in _expand_axis(n_cfg, {"d": d}))
     else:
         raise ValueError("Inputs YAML must contain either 'problems' or 'sweep'.")
 
