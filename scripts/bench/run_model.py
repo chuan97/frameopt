@@ -24,54 +24,57 @@ import argparse
 import csv
 import importlib
 import statistics
-import subprocess
-import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 from models.api import Problem
+from scripts._utils import (
+    ensure_dir,
+    git_sha,
+    rel_name_from_config,
+    repo_root_from_here,
+    timestamp_utc,
+)
 
 # --------------------------- helpers ---------------------------
 
 
-def repo_root_from_here() -> Path:
-    return Path(__file__).resolve().parents[2]
+def _eval_expr(x: Any, env: dict[str, int]) -> int:
+    """Evaluate an int or simple expression string like '2*d' with variables from env."""
+    if isinstance(x, int):
+        return x
+    if isinstance(x, float):
+        return int(x)
+    if isinstance(x, str):
+        return int(eval(x, {}, env))
+    raise TypeError(f"Unsupported expression type: {type(x)!r} (value={x!r})")
 
 
-def git_sha(repo_root: Path) -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True
-        ).strip()
-    except Exception:
-        return "UNKNOWN"
-
-
-def timestamp_utc() -> str:
-    return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
-
-
-def ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
-
-
-def rel_name_from_config(path: Path, anchor: str) -> str:
+def _expand_axis(axis_cfg: dict[str, Any], env: dict[str, int]) -> list[int]:
     """
-    Derive a stable name from a config file path relative to a known anchor directory.
-    Example:
-      path = /repo/configs/models/projection/quick.yaml, anchor="configs"
-      -> "models/projection/quick"
+    Expand an axis configuration into a list of ints.
+
+    Supported forms:
+      - {'values': [2, 3, '2*d', ...]}
+      - {'range': {'start': 2, 'stop': 7, 'step': 1}}  # 'start'/'stop'/'step' may be expressions.
+    The 'stop' is treated as inclusive.
     """
-    try:
-        idx = path.parts.index(anchor)
-    except ValueError:
-        # Fallback: use stem without extension
-        return path.with_suffix("").name
-    rel = Path(*path.parts[idx + 1 :]).with_suffix("")
-    # Normalize to POSIX-like with forward slashes
-    return str(rel).replace("\\", "/")
+    if "values" in axis_cfg:
+        vals = [_eval_expr(v, env) for v in axis_cfg["values"]]
+        return vals
+    if "range" in axis_cfg:
+        r = axis_cfg["range"]
+        start = _eval_expr(r["start"], env)
+        stop = _eval_expr(r["stop"], env)
+        step = _eval_expr(r.get("step", 1), env)
+        if step == 0:
+            raise ValueError("range.step must be nonzero")
+        # inclusive stop
+        stop_inclusive = stop + (1 if step > 0 else -1)
+        return list(range(start, stop_inclusive, step))
+    raise ValueError("Axis config must contain either 'values' or 'range'")
 
 
 # --------------------------- loaders ---------------------------
@@ -107,22 +110,36 @@ def load_inputs(
     else:
         raise ValueError("Invalid 'seeds' format in inputs YAML")
 
-    # Problems: for this first pass, support explicit list only
-    problems = data.get("problems")
-    if not isinstance(problems, list):
-        raise ValueError(
-            "This runner expects an explicit 'problems:' list in inputs YAML."
-        )
     pairs: list[tuple[int, int]] = []
-    for item in problems:
-        try:
-            d = item["d"]
-            n = item["n"]
-        except Exception as e:
-            raise ValueError(
-                f"Invalid problem entry (expected mapping with 'n' and 'd'): {item}"
-            ) from e
-        pairs.append((n, d))
+
+    if "problems" in data:
+        problems = data["problems"]
+        if not isinstance(problems, list):
+            raise ValueError("Invalid 'problems' format: expected a list.")
+        for item in problems:
+            try:
+                d = item["d"]
+                n = item["n"]
+            except Exception as e:
+                raise ValueError(
+                    f"Invalid problem entry (expected mapping with 'n' and 'd'): {item}"
+                ) from e
+            pairs.append((n, d))
+    elif "sweep" in data:
+        sweep = data["sweep"]
+        if not isinstance(sweep, dict):
+            raise ValueError("Invalid 'sweep' format: expected a mapping.")
+        if "d" not in sweep or "n" not in sweep:
+            raise ValueError("Sweep must define both 'd' and 'n' axes.")
+        d_cfg = cast(dict[str, Any], sweep["d"])
+        n_cfg = cast(dict[str, Any], sweep["n"])
+        d_values = _expand_axis(d_cfg, {})
+        for d in d_values:
+            n_values = _expand_axis(n_cfg, {"d": d})
+            for n in n_values:
+                pairs.append((n, d))
+    else:
+        raise ValueError("Inputs YAML must contain either 'problems' or 'sweep'.")
 
     return inputs_name, pairs, seeds, data
 
@@ -178,6 +195,9 @@ def main() -> None:
     ap.add_argument(
         "--out", type=Path, default=Path("results/runs"), help="Output root directory"
     )
+    ap.add_argument(
+        "--verbose", action="store_true", help="Enable verbose/debug logging"
+    )
     args = ap.parse_args()
 
     repo_root = repo_root_from_here()
@@ -219,6 +239,10 @@ def main() -> None:
         writer.writeheader()
 
         for n, d in pairs:
+            if args.verbose:
+                print(
+                    f"Running model {model_name} on inputs {inputs_name} with n={n}, d={d}"
+                )
             init_kwargs_base = dict(base_kwargs)
             if "p" in init_kwargs_base and isinstance(init_kwargs_base["p"], dict):
                 expr = init_kwargs_base["p"].get("__expr__")
@@ -229,6 +253,8 @@ def main() -> None:
             times: list[float] = []
 
             for seed in seeds:
+                if args.verbose:
+                    print(f"  Seed {seed}...")
                 init_kwargs = init_kwargs_base | {"seed": seed}
                 model = model_cls(**init_kwargs)
 

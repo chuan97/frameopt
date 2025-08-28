@@ -22,57 +22,7 @@ from evomof.optim.utils.p_scheduler import (
     FixedPScheduler,
     Scheduler,
 )
-
-# ------------------------------- helpers ---------------------------------- #
-
-
-def _timestamp_utc() -> str:
-    return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
-
-
-def _ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
-
-
-def _git_sha(repo_root: Path) -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True
-        ).strip()
-    except Exception as e:
-        raise RuntimeError(
-            f"Unable to read git commit hash in repo root {repo_root}.\n"
-            f"Are you running inside a git checkout? Original error: {e}"
-        ) from e
-
-
-def _assert_git_clean(repo_root: Path) -> None:
-    """
-    Raise if there are uncommitted *tracked* changes (staged or unstaged).
-
-    We ignore untracked files to avoid false positives from scratch artifacts.
-    """
-    try:
-        # Quick sanity: ensure we're in a repo
-        subprocess.check_output(
-            ["git", "rev-parse", "--is-inside-work-tree"], cwd=str(repo_root), text=True
-        )
-        # list tracked changes only (ignore untracked). Non-empty means dirty.
-        status = subprocess.check_output(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
-            cwd=str(repo_root),
-            text=True,
-        )
-        if status.strip():
-            raise RuntimeError(
-                "Repository has uncommitted tracked changes. "
-                "For certifiable experiments, commit or stash changes and retry."
-            )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"Git check failed. Are you inside a git repo at {repo_root}? {e}"
-        ) from e
-
+from scripts._utils import assert_git_clean, ensure_dir, git_sha, timestamp_utc
 
 # ------------------------------ config model ------------------------------ #
 
@@ -396,15 +346,15 @@ def main() -> None:
     cfg_path = _discover_config(this_file)
 
     # Enforce clean repo for certifiable experiments
-    _assert_git_clean(repo_root)
-    git_sha = _git_sha(repo_root)
+    assert_git_clean(repo_root)
+    sha = git_sha(repo_root)
 
     cfg = ExperimentConfig.load(cfg_path)
 
     # Output root: results/<experiment>_<timestamp>/
-    ts = _timestamp_utc()
+    ts = timestamp_utc()
     out_root = repo_root / "results" / f"{cfg.experiment}_{ts}"
-    _ensure_dir(out_root)
+    ensure_dir(out_root)
 
     # Save augmented config in output root
     base_cfg = yaml.safe_load(cfg_path.read_text())
@@ -413,7 +363,7 @@ def main() -> None:
     augmented = {
         **base_cfg,
         "_meta": {
-            "git_sha": git_sha,
+            "git_sha": sha,
             "timestamp_utc": ts,
             "driver": str(this_file.relative_to(repo_root)),
         },
@@ -434,7 +384,7 @@ def main() -> None:
 
     for seed in seeds:
         run_dir = out_root / f"seed_{seed:04d}"
-        _ensure_dir(run_dir)
+        ensure_dir(run_dir)
         print(f"[run] seed={seed} → {run_dir}")
 
         # Resolve CMA params
