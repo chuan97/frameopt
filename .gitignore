@@ -29,3 +29,6 @@ results/
 
 # Experiments
 configs/experiments/
+
+# Cluster scripts
+scripts/cluster/
