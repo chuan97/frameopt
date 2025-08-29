@@ -190,7 +190,10 @@ def main() -> None:
         help="Path to model preset YAML (configs/models/*/*.yaml)",
     )
     ap.add_argument(
-        "--out", type=Path, default=Path("results/runs"), help="Output root directory"
+        "--out",
+        type=Path,
+        default=Path("results/model-runs"),
+        help="Output root directory",
     )
     ap.add_argument(
         "--verbose", action="store_true", help="Enable verbose/debug logging"

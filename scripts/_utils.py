@@ -60,8 +60,17 @@ def assert_git_clean(repo_root: Path) -> None:
 
 
 def repo_root_from_here() -> Path:
-    """Two levels up from this file (the repository root)."""
-    return Path(__file__).resolve().parents[2]
+    """Return the repository root by walking upwards until a '.git' directory is found.
+    Falls back to one level up from this file's parent if none is found.
+    """
+    p = Path(__file__).resolve()
+    base = p.parent
+    # Search current directory and all parents for a `.git` directory
+    for cand in [base] + list(base.parents):
+        if (cand / ".git").exists():
+            return cand
+    # Fallback: one level up
+    return base.parent
 
 
 def rel_name_from_config(path: Path, anchor: str) -> str:
