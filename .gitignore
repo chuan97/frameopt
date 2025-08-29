@@ -32,3 +32,6 @@ configs/experiments/
 
 # Cluster scripts
 scripts/cluster/
+
+# Cluster output
+slurm/
