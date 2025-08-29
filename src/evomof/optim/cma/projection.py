@@ -56,10 +56,16 @@ class ProjectionCMA:
         self.n, self.d = n, d
 
         rng_gen = np.random.default_rng(seed)
+
         cma_seed = seed
         cma_opts: dict[str, Any] = {}
+
         if popsize is not None:
             cma_opts["popsize"] = popsize
+        else:
+            dim = 2 * n * d
+            cma_opts["popsize"] = 4 + int(3 * np.log(dim))
+
         if cma_seed is not None:
             cma_opts["seed"] = cma_seed
 
