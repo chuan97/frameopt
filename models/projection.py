@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 
 import numpy as np
 
@@ -12,7 +11,6 @@ from models.api import Problem, Result
 from models.utils import count_calls
 
 
-@dataclass
 class ProjectionModel:
     def __init__(
         self,
