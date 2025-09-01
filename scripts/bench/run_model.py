@@ -1,35 +1,21 @@
 #!/usr/bin/env python3
-"""
-run_model.py — Load an inputs suite and a model preset, run all cases, and log results.
-
-Inputs:
-  - --inputs configs/inputs/<name>.yaml
-  - --model-config configs/models/<family>/<preset>.yaml
-
-Design:
-  - Inputs own geometry & seeds (list or range).
-  - Model config owns algorithm & hyperparameters (incl. p or schedules).
-  - Model implements its own training objective; the runner only measures wall-time and logs results.
-
-Output:
-  results/runs/<inputs_name>/<model_name>/<timestamp>/
-    - results.csv
-    - inputs_used.yaml
-    - model_config_used.yaml
-"""
-
 from __future__ import annotations
 
 import argparse
 import csv
 import importlib
-import statistics
+import itertools
+import multiprocessing as mp
+import os
+import time
+import traceback
+from collections.abc import Mapping
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import yaml
 
-from models.api import Problem
 from scripts._utils import (
     ensure_dir,
     git_sha,
@@ -38,258 +24,336 @@ from scripts._utils import (
     timestamp_utc,
 )
 
-# --------------------------- helpers ---------------------------
+# ---------------------------
+# CLI
+# ---------------------------
 
 
-def _eval_expr(x: Any, env: dict[str, int]) -> int:
-    """Evaluate an int or simple expression string like '2*d' with variables from env."""
-    if isinstance(x, int):
-        return x
-    if isinstance(x, float):
-        return int(x)
-    if isinstance(x, str):
-        return int(eval(x, {}, env))
-    raise TypeError(f"Unsupported expression type: {type(x)!r} (value={x!r})")
-
-
-def _expand_axis(axis_cfg: dict[str, Any], env: dict[str, int]) -> list[int]:
-    """
-    Expand an axis configuration into a list of ints.
-
-    Supported forms:
-      - {'values': [2, 3, '2*d', ...]}
-      - {'range': {'start': 2, 'stop': 7, 'step': 1}}  # 'start'/'stop'/'step' may be expressions.
-    The 'stop' is treated as inclusive.
-    """
-    if "values" in axis_cfg:
-        vals = [_eval_expr(v, env) for v in axis_cfg["values"]]
-        return vals
-    if "range" in axis_cfg:
-        r = axis_cfg["range"]
-        start = _eval_expr(r["start"], env)
-        stop = _eval_expr(r["stop"], env)
-        step = _eval_expr(r.get("step", 1), env)
-        if step == 0:
-            raise ValueError("range.step must be nonzero")
-        # inclusive stop
-        stop_inclusive = stop + (1 if step > 0 else -1)
-        return list(range(start, stop_inclusive, step))
-    raise ValueError("Axis config must contain either 'values' or 'range'")
-
-
-# --------------------------- loaders ---------------------------
-
-
-def load_inputs(
-    inputs_path: Path,
-) -> tuple[str, list[tuple[int, int]], list[int], dict[str, Any]]:
-    """
-    Returns:
-      inputs_name: derived name from path
-      pairs: list of (n, d)
-      seeds: list of seeds
-      raw_dict: the loaded YAML for provenance
-    """
-    data = yaml.safe_load(inputs_path.read_text())
-    inputs_name = rel_name_from_config(inputs_path, anchor="configs")
-    if inputs_name.startswith("inputs/"):
-        inputs_name = inputs_name.split("/", 1)[1]
-
-    # Seeds: int, dict(count/start), or dict(list)
-    seeds_cfg = data.get("seeds", 0)
-    seeds: list[int]
-    if isinstance(seeds_cfg, int):
-        seeds = [seeds_cfg]
-    elif isinstance(seeds_cfg, dict):
-        if "list" in seeds_cfg:
-            seeds = seeds_cfg["list"]
-        else:
-            count = seeds_cfg["count"]
-            start = seeds_cfg.get("start", 0)
-            seeds = [start + i for i in range(count)]
-    else:
-        raise ValueError("Invalid 'seeds' format in inputs YAML")
-
-    pairs: list[tuple[int, int]] = []
-
-    if "problems" in data:
-        problems = data["problems"]
-        if not isinstance(problems, list):
-            raise ValueError("Invalid 'problems' format: expected a list.")
-        for item in problems:
-            try:
-                d = item["d"]
-                n = item["n"]
-            except Exception as e:
-                raise ValueError(
-                    f"Invalid problem entry (expected mapping with 'n' and 'd'): {item}"
-                ) from e
-            pairs.append((n, d))
-    elif "sweep" in data:
-        sweep = data["sweep"]
-        if not isinstance(sweep, dict):
-            raise ValueError("Invalid 'sweep' format: expected a mapping.")
-        if "d" not in sweep or "n" not in sweep:
-            raise ValueError("Sweep must define both 'd' and 'n' axes.")
-        d_cfg = cast(dict[str, Any], sweep["d"])
-        n_cfg = cast(dict[str, Any], sweep["n"])
-        d_values = _expand_axis(d_cfg, {})
-        pairs.extend((n, d) for d in d_values for n in _expand_axis(n_cfg, {"d": d}))
-    else:
-        raise ValueError("Inputs YAML must contain either 'problems' or 'sweep'.")
-
-    return inputs_name, pairs, seeds, data
-
-
-def load_model_class_and_kwargs(
-    model_cfg_path: Path,
-) -> tuple[str, type, dict[str, Any], dict[str, Any]]:
-    """
-    Returns:
-      model_name: derived from path (configs/models/...)
-      model_cls: class object to instantiate
-      base_kwargs: kwargs dict from YAML 'init'
-      raw_dict: loaded YAML for provenance
-    """
-    data = yaml.safe_load(model_cfg_path.read_text())
-    model_name = rel_name_from_config(model_cfg_path, anchor="configs")
-    if model_name.startswith("models/"):
-        model_name = model_name.split("/", 1)[1]
-
-    import_path = data.get("import")
-    if not isinstance(import_path, str) or ":" not in import_path:
-        raise ValueError("Model config must include 'import: module.path:ClassName'")
-
-    mod_name, _, cls_name = import_path.partition(":")
-    mod = importlib.import_module(mod_name)
-    model_cls = getattr(mod, cls_name)
-    base_kwargs: dict[str, Any] = data.get("init", {})
-
-    # If 'p' is present and is a string, mark for evaluation later
-    if "p" in base_kwargs and isinstance(base_kwargs["p"], str):
-        base_kwargs["p"] = {"__expr__": base_kwargs["p"]}
-
-    return model_name, model_cls, base_kwargs, data
-
-
-# --------------------------- main ---------------------------
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Run a model preset over an inputs suite.")
-    ap.add_argument(
-        "--inputs",
-        type=Path,
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Single-node parallel model runner (multiprocessing)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument(
+        "--inputs", required=True, type=Path, help="Inputs YAML with problems & seeds"
+    )
+    p.add_argument(
+        "--model",
         required=True,
-        help="Path to inputs YAML (configs/inputs/*.yaml)",
-    )
-    ap.add_argument(
-        "--model-config",
         type=Path,
-        required=True,
-        help="Path to model preset YAML (configs/models/*/*.yaml)",
+        help="Model YAML: import & init (+ optional scheduler)",
     )
-    ap.add_argument(
-        "--out",
+    p.add_argument(
+        "--output-root",
         type=Path,
-        default=Path("results/model-runs"),
-        help="Output root directory",
+        default=Path("outputs"),
+        help="Root directory for outputs",
     )
-    ap.add_argument(
-        "--verbose", action="store_true", help="Enable verbose/debug logging"
+    p.add_argument(
+        "--workers", type=int, default=None, help="Number of worker processes"
     )
-    args = ap.parse_args()
-
-    repo_root = repo_root_from_here()
-    sha = git_sha(repo_root)
-    ts = timestamp_utc()
-
-    inputs_name, pairs, seeds, inputs_dict = load_inputs(args.inputs)
-    model_name, model_cls, base_kwargs, model_cfg_dict = load_model_class_and_kwargs(
-        args.model_config
+    p.add_argument(
+        "--overwrite", action="store_true", help="Overwrite finished case dirs"
     )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Only enumerate cases, do not run"
+    )
+    return p.parse_args(argv)
 
-    # Output directory: results/runs/<inputs_name>/<model_name>/<timestamp>/
-    out_dir = args.out / inputs_name / model_name / ts
+
+# ---------------------------
+# YAML helpers
+# ---------------------------
+
+
+def _read_yaml(path: Path) -> Mapping[str, Any]:
+    with path.open("r") as f:
+        data = yaml.safe_load(f) or {}
+    if not isinstance(data, Mapping):
+        raise ValueError(f"Top-level YAML at {path} must be a mapping")
+    return data
+
+
+def _parse_seeds(seeds: Any) -> list[int]:
+    # Accept: int | list[int] | {count,start,step?}
+    if isinstance(seeds, int):
+        return [seeds]
+    if isinstance(seeds, list | tuple):
+        return [int(s) for s in seeds]
+    if isinstance(seeds, Mapping):
+        count = seeds.get("count", 0)
+        start = seeds.get("start", 0)
+        step = seeds.get("step", 1)
+        return [start + i * step for i in range(count)]
+    raise ValueError("Unsupported seeds format")
+
+
+def _range_or_list(obj: Any) -> list[int]:
+    if isinstance(obj, Mapping) and "range" in obj:
+        r = obj["range"]
+        start, stop = r["start"], r["stop"]
+        step = r.get("step", 1)
+        stop_incl = stop + (1 if step > 0 else -1)
+        return list(range(start, stop_incl, step))
+    if isinstance(obj, list | tuple):
+        return [int(x) for x in obj]
+    raise ValueError("Expected list or {range:{start,stop,step}}")
+
+
+def enumerate_cases(inputs_yaml: Path) -> list[dict[str, Any]]:
+    cfg = _read_yaml(inputs_yaml)
+    seeds = _parse_seeds(cfg["seeds"])  # seeds always in inputs
+
+    problems: list[tuple[int, int]] = []
+    if "problems" in cfg:
+        problems = [(p["d"], p["n"]) for p in cfg["problems"]]
+    elif "sweep" in cfg:
+        d_list = _range_or_list(cfg["sweep"]["d"])
+        n_list = _range_or_list(cfg["sweep"]["n"])
+        problems = list(itertools.product(d_list, n_list))
+    else:
+        raise ValueError("Inputs YAML must define either 'problems' or 'sweep'")
+
+    return [{"d": d, "n": n, "seed": s} for (d, n) in problems for s in seeds]
+
+
+# ---------------------------
+# Dynamic import & model/scheduler
+# ---------------------------
+
+
+def _import(spec: str) -> Any:
+    mod_name, _, attr = spec.partition(":")
+    return getattr(importlib.import_module(mod_name), attr)
+
+
+def build_model(model_yaml: Path) -> tuple[type, dict[str, Any], str]:
+    m = _read_yaml(model_yaml)
+    Model = _import(m["import"])  # "pkg.mod:Class"
+    kwargs = dict(m.get("init", {}) or {})
+
+    # Optional nested scheduler (supports 'scheduler' or 'p_scheduler')
+    sched_cfg = m.get("scheduler") or m.get("p_scheduler")
+    if isinstance(sched_cfg, Mapping) and "import" in sched_cfg:
+        Sched = _import(sched_cfg["import"])  # "pkg.mod:Class"
+        kwargs_name = "scheduler"
+        try:
+            # Match ctor arg name if it exists
+            import inspect
+
+            names = {
+                p.name for p in inspect.signature(Model.__init__).parameters.values()
+            }
+            if "p_scheduler" in names and "scheduler" not in names:
+                kwargs_name = "p_scheduler"
+        except Exception:
+            pass
+        kwargs[kwargs_name] = Sched(**(sched_cfg.get("init", {}) or {}))
+
+    label = str(m["import"]).split(":")[-1]
+    return Model, kwargs, label
+
+
+# ---------------------------
+# Worker
+# ---------------------------
+
+
+def run_one_case(case: Mapping[str, Any]) -> Mapping[str, Any]:
+    d, n, seed = case["d"], case["n"], case["seed"]
+    out_dir = Path(case["out_dir"])
     ensure_dir(out_dir)
 
-    # Save the original configs
-    (out_dir / "inputs_used.yaml").write_text(args.inputs.read_text())
-    (out_dir / "model_config_used.yaml").write_text(args.model_config.read_text())
-
-    csv_path = out_dir / "results.csv"
-    with csv_path.open("w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "timestamp",
-                "git_sha",
-                "inputs",
-                "model",
-                "d",
-                "n",
-                "n_seeds",
-                "coh_min",
-                "coh_median",
-                "coh_mean",
-                "coh_max",
-                "wall_time_s_mean",
-            ],
+    # Provenance copies (best-effort)
+    try:
+        out_dir.joinpath("model_used.yaml").write_text(
+            Path(case["model_yaml"]).read_text()
         )
-        writer.writeheader()
+        out_dir.joinpath("inputs_used.yaml").write_text(
+            Path(case["inputs_yaml"]).read_text()
+        )
+    except Exception:
+        pass
 
-        for n, d in pairs:
-            if args.verbose:
-                print(
-                    f"Running model {model_name} on inputs {inputs_name} with n={n}, d={d}"
-                )
-            init_kwargs_base = dict(base_kwargs)
-            if "p" in init_kwargs_base and isinstance(init_kwargs_base["p"], dict):
-                expr = init_kwargs_base["p"].get("__expr__")
-                if expr is not None:
-                    init_kwargs_base["p"] = eval(expr, {}, {"n": n, "d": d})
+    t0 = time.perf_counter()
+    status = "ok"
+    message = ""
+    score: float | None = None
 
-            cohs: list[float] = []
-            times: list[float] = []
+    try:
+        Model, kwargs, _ = build_model(Path(case["model_yaml"]))
+        model = Model(**kwargs)
+        if hasattr(model, "run"):
+            try:
+                res = model.run(d=d, n=n, seed=seed)
+            except TypeError:
+                res = model.run(d=d, n=n)
+        else:
+            try:
+                res = model(d=d, n=n, seed=seed)
+            except TypeError:
+                res = model(d=d, n=n)
+        if isinstance(res, Mapping):
+            for k in ("score", "energy_final", "energy", "coherence", "loss"):
+                v = res.get(k)
+                if isinstance(v, int | float):
+                    score = float(v)
+                    break
+        else:
+            # if model returns a scalar
+            if isinstance(res, int | float):
+                score = float(res)
+    except Exception as e:
+        status = "error"
+        message = f"{type(e).__name__}: {e}"
+        out_dir.joinpath("ERROR.txt").write_text(traceback.format_exc())
 
-            for seed in seeds:
-                if args.verbose:
-                    print(f"  Seed {seed}...")
-                init_kwargs = init_kwargs_base | {"seed": seed}
-                model = model_cls(**init_kwargs)
+    elapsed = time.perf_counter() - t0
 
-                result = model.run(Problem(n=n, d=d))
-
-                cohs.append(result.best_coherence)
-                times.append(result.wall_time_s)
-
-            n_seeds = len(cohs)
-            coh_min = min(cohs)
-            coh_median = statistics.median(cohs)
-            coh_mean = statistics.fmean(cohs)
-            coh_max = max(cohs)
-            wall_time_s_mean = statistics.fmean(times)
-
-            writer.writerow(
-                {
-                    "timestamp": ts,
-                    "git_sha": sha,
-                    "inputs": inputs_name,
-                    "model": model_name,
-                    "d": d,
-                    "n": n,
-                    "n_seeds": n_seeds,
-                    "coh_min": coh_min,
-                    "coh_median": coh_median,
-                    "coh_mean": coh_mean,
-                    "coh_max": coh_max,
-                    "wall_time_s_mean": wall_time_s_mean,
-                }
-            )
-            f.flush()
-
-    print(f"✅ wrote {csv_path}")
+    row = {
+        "stamp": case["stamp"],
+        "model": case["model_label"],
+        "inputs_yaml": Path(case["inputs_yaml"]).name,
+        "model_yaml": Path(case["model_yaml"]).name,
+        "d": d,
+        "n": n,
+        "seed": seed,
+        "status": status,
+        "elapsed_s": f"{elapsed:.6f}",
+        "score": "" if score is None else f"{score:.16g}",
+        "git_sha": git_sha(repo_root_from_here()),
+        "hostname": os.uname().nodename if hasattr(os, "uname") else "",
+        "out_dir": str(out_dir),
+        "message": message,
+    }
+    csv_path = out_dir / "metrics.csv"
+    with csv_path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(row.keys()))
+        w.writeheader()
+        w.writerow(row)
+    if status == "ok":
+        out_dir.joinpath("DONE.ok").write_text("ok\n")
+    return row
 
 
-if __name__ == "__main__":  # pragma: no cover
-    main()
+# ---------------------------
+# Collation
+# ---------------------------
+
+
+def collate_results(exp_root: Path) -> Path:
+    rows: list[dict[str, Any]] = []
+    for p in exp_root.rglob("metrics.csv"):
+        with p.open("r", newline="") as f:
+            r = list(csv.DictReader(f))
+            if r:
+                rows.append(r[0])
+    if not rows:
+        return exp_root / "results.csv"
+
+    rows.sort(key=lambda r: (int(r["d"]), int(r["n"]), int(r["seed"])))
+    fieldnames = list(rows[0].keys())
+    out_csv = exp_root / "results.csv"
+    with out_csv.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    return out_csv
+
+
+# ---------------------------
+# Worker count & BLAS clamp
+# ---------------------------
+
+
+def _detect_workers(user_workers: int | None, ncases: int) -> int:
+    if user_workers and user_workers > 0:
+        return min(user_workers, ncases)
+    for k in ("SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE"):
+        v = os.environ.get(k)
+        if v:
+            try:
+                return max(1, min(int(v), ncases))
+            except ValueError:
+                pass
+    return max(1, min(os.cpu_count() or 1, ncases))
+
+
+def _clamp_blas() -> None:
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+
+# ---------------------------
+# Main
+# ---------------------------
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
+    _clamp_blas()
+
+    cases = enumerate_cases(args.inputs)
+    model_info = _read_yaml(args.model)
+    label = str(model_info.get("import", rel_name_from_config(args.model))).split(":")[
+        -1
+    ]
+
+    stamp = timestamp_utc()
+    exp_root = (args.output_root / stamp / label).resolve()
+    ensure_dir(exp_root)
+
+    payloads: list[dict[str, Any]] = []
+    for c in cases:
+        out_dir = exp_root / f"d{c['d']}_n{c['n']}" / f"seed_{c['seed']}"
+        ensure_dir(out_dir)
+        payloads.append(
+            {
+                **c,
+                "model_yaml": str(args.model),
+                "inputs_yaml": str(args.inputs),
+                "out_dir": str(out_dir),
+                "model_label": label,
+                "stamp": stamp,
+            }
+        )
+
+    if args.dry_run:
+        print(f"[dry-run] {len(payloads)} cases")
+        return 0
+
+    to_run = [
+        p
+        for p in payloads
+        if args.overwrite or not Path(p["out_dir"]).joinpath("DONE.ok").exists()
+    ]
+    if not to_run:
+        out_csv = collate_results(exp_root)
+        print(f"Nothing to do. Results at: {out_csv}")
+        return 0
+
+    workers = _detect_workers(args.workers, len(to_run))
+    print(f"[runner] {len(to_run)} / {len(payloads)} cases; workers={workers}")
+
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(run_one_case, p): p for p in to_run}
+        try:
+            for fut in as_completed(futs):
+                fut.result()  # exceptions will surface here and still continue
+        except KeyboardInterrupt:
+            print("\nInterrupted. Finishing running tasks...")
+
+    out_csv = collate_results(exp_root)
+    print(f"[runner] Done → {out_csv}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
