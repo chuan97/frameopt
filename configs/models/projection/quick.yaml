@@ -1,5 +1,5 @@
 import: models.projection:ProjectionModel
 init:
-  p: "2 * d"
+  p: 20
   sigma0: 0.5
   max_gen: 2000

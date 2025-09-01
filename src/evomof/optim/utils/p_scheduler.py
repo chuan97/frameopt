@@ -100,7 +100,7 @@ class FixedPScheduler:
 
     # state
     p: float = field(init=False)
-    # Intitialize to 1 so the first ramp occurs at step ( 1 + switch_every)
+    # Intitialize to 1 so the first ramp occurs at step (1 + switch_every)
     # and the value returned by update() at that step is the new p
     last_switch_step: int = 1
 
