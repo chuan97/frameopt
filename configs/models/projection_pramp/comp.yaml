@@ -2,9 +2,10 @@ import: models.projection_pramp:ProjectionPRampModel
 init:
   sigma0: 0.5
   max_gen: 50000
+  seed: 42
   scheduler:
     import: evomof.optim.utils.p_scheduler:AdaptivePScheduler
     init:
       p0: 2.0
       p_max: 1e9
-      window: 100 
+      window: 100

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import importlib
+
 # --- Added imports ---
 import time
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
@@ -37,6 +41,24 @@ class ProjectionPRampModel:
     @property
     def name(self) -> str:
         return "projection-cma/pramp"
+
+    @classmethod
+    def from_config(cls, path: Path) -> ProjectionPRampModel:
+        cfg = yaml.safe_load(path.read_text())
+        init = cfg["init"]
+
+        scfg = init["scheduler"]
+        mod_name, _, class_name = scfg["import"].partition(":")
+        mod = importlib.import_module(mod_name)
+        sched_cls = getattr(mod, class_name)
+        sinit = scfg["init"]
+        if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
+            sinit["total_steps"] = init["max_gen"]
+        scheduler = sched_cls(**sinit)
+
+        init["scheduler"] = scheduler
+
+        return cls(**init)
 
     def run(self, problem: Problem) -> Result:
         rng = np.random.default_rng(self.seed)

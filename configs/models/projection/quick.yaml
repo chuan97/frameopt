@@ -3,3 +3,4 @@ init:
   p: 20
   sigma0: 0.5
   max_gen: 2000
+  seed: 42

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import numpy as np
+import yaml
 
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
@@ -30,6 +32,13 @@ class ProjectionModel:
     @property
     def name(self) -> str:
         return "projection-cma/pure"
+
+    @classmethod
+    def from_config(cls, path: Path) -> ProjectionModel:
+        config = yaml.safe_load(path.read_text())
+        init_dict = config["init"]
+
+        return cls(**init_dict)
 
     def run(self, problem: Problem) -> Result:
         rng = np.random.default_rng(self.seed)
