@@ -18,10 +18,12 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+from dask.distributed import Client, as_completed
 
 from models.api import Problem
 from scripts._utils import (
@@ -148,23 +150,41 @@ def main() -> None:
         )
         writer.writeheader()
 
-        for problem in problems:
-            print(f"Running {model_name} on inputs d={problem.d}, n={problem.n}...")
-            result = model.run(problem)
+        n_cpus = os.cpu_count()
+        if n_cpus < 20:
+            n_workers = min(4, int(n_cpus * 0.75))
+        else:
+            n_workers = int(n_cpus * 0.9)
+        client = Client(n_workers=n_workers, threads_per_worker=1)
 
-            writer.writerow(
-                {
-                    "timestamp": ts,
-                    "git_sha": sha,
-                    "inputs": inputs_name,
-                    "model": model_name,
-                    "d": problem.d,
-                    "n": problem.n,
-                    "coh_min": result.best_coherence,
-                    "wall_time_s_mean": result.wall_time_s,
-                }
-            )
-            f.flush()
+        futures = client.map(model.run, problems)
+
+        # Buffer completed results until the next expected problem is available,
+        # then flush sequentially to keep the CSV ordered by input order.
+        buffer: dict[Problem, dict[str, Any]] = {}
+        expected_idx = 0
+        order_keys = list(problems)
+
+        for fut in as_completed(futures):
+            result = fut.result()
+            k = result.problem
+
+            row = {
+                "timestamp": ts,
+                "git_sha": sha,
+                "inputs": inputs_name,
+                "model": model_name,
+                "d": result.problem.d,
+                "n": result.problem.n,
+                "coh_min": result.best_coherence,
+                "wall_time_s_mean": result.wall_time_s,
+            }
+            buffer[k] = row
+
+            while order_keys[expected_idx] in buffer:
+                writer.writerow(buffer.pop(order_keys[expected_idx]))
+                f.flush()
+                expected_idx += 1
 
     print(f"✅ wrote {csv_path}")
 

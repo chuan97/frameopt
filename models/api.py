@@ -6,7 +6,7 @@ from typing import Any, Protocol
 from evomof.core.frame import Frame
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Problem:
     d: int
     n: int
@@ -14,6 +14,7 @@ class Problem:
 
 @dataclass
 class Result:
+    problem: Problem
     best_frame: Frame
     best_coherence: float
     wall_time_s: float

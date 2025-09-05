@@ -29,6 +29,7 @@ suite = [
     "mpmath",
     "pyyaml",
     "types-PyYAML",
+    "dask[distributed]>=2025.7.0",
 ]
 
 [tool.black]

@@ -39,6 +39,7 @@ class ProjectionModel:
             frame = Frame.from_array(frame_vectors)
 
             return Result(
+                problem=problem,
                 best_frame=frame,
                 best_coherence=float(coherence(frame)),
                 wall_time_s=0.0,
@@ -56,11 +57,12 @@ class ProjectionModel:
 
         t0 = time.perf_counter()
         best_frame = solver.run(
-            max_gen=self.max_gen, log_every=self.log_every, tol=1e-12
+            max_gen=self.max_gen, log_every=self.log_every, tol=1e-20
         )
         dt = time.perf_counter() - t0
 
         return Result(
+            problem=problem,
             best_frame=best_frame,
             best_coherence=float(coherence(best_frame)),
             wall_time_s=dt,

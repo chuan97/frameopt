@@ -57,6 +57,7 @@ class ProjectionPRampModel:
             frame = Frame.from_array(frame_vectors)
 
             return Result(
+                problem=problem,
                 best_frame=frame,
                 best_coherence=float(coherence(frame)),
                 wall_time_s=0.0,
@@ -95,6 +96,7 @@ class ProjectionPRampModel:
         dt = time.perf_counter() - t0
 
         return Result(
+            problem=problem,
             best_frame=best_frame,
             best_coherence=best_coh,
             wall_time_s=dt,
