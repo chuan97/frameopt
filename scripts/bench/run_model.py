@@ -131,7 +131,7 @@ def main() -> None:
     inputs_name, problems = load_inputs(args.inputs)
     model_name, model = load_model(args.model_config)
 
-    # Output directory: results/runs/<inputs_name>/<model_name>/<timestamp>/
+    # Output directory: results/model-runs/<inputs_name>/<model_name>/<timestamp>/
     out_dir = args.out / inputs_name / model_name / ts
     ensure_dir(out_dir)
 
