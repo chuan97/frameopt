@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib
-
-# --- Added imports ---
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import yaml
@@ -12,31 +14,18 @@ import yaml
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
-from evomof.optim.utils.p_scheduler import FixedPScheduler, Scheduler
+from evomof.optim.utils.p_scheduler import Scheduler
 from models.api import Problem, Result
 
 
+@dataclass(frozen=True, slots=True)
 class ProjectionPRampModel:
-    def __init__(
-        self,
-        sigma0: float = 0.5,
-        popsize: int | None = None,
-        max_gen: int = 50_000,
-        seed: int | None = None,
-        log_every: int = 0,
-        scheduler: Scheduler | None = None,
-    ):
-        self.sigma0 = sigma0
-        self.popsize = popsize
-        self.max_gen = max_gen
-        self.seed = seed
-        self.log_every = log_every
-
-        self.scheduler: Scheduler
-        if scheduler is None:
-            self.scheduler = FixedPScheduler()
-        else:
-            self.scheduler = scheduler
+    scheduler_factory: Callable[[], Scheduler]
+    sigma0: float = 0.3
+    popsize: int | None = None
+    max_gen: int = 50_000
+    seed: int | None = None
+    log_every: int = 0
 
     @property
     def name(self) -> str:
@@ -47,33 +36,44 @@ class ProjectionPRampModel:
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 
-        scfg = init["scheduler"]
-        mod_name, _, class_name = scfg["import"].partition(":")
-        mod = importlib.import_module(mod_name)
-        sched_cls = getattr(mod, class_name)
-        sinit = scfg["init"]
-        if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
-            sinit["total_steps"] = init["max_gen"]
-        scheduler = sched_cls(**sinit)
+        scfg = init.get("scheduler")
+        if scfg:
+            mod_name, _, class_name = scfg["import"].partition(":")
+            mod = importlib.import_module(mod_name)
+            sched_cls = cast(type[Scheduler], getattr(mod, class_name))
+            sinit = dict(scfg.get("init", {}))
+            if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
+                sinit["total_steps"] = init["max_gen"]
 
-        init["scheduler"] = scheduler
+            factory = cast(Callable[[], Scheduler], partial(sched_cls, **sinit))
+            init["scheduler_factory"] = factory
+            init.pop("scheduler", None)
 
         return cls(**init)
 
     def run(self, problem: Problem) -> Result:
-        rng = np.random.default_rng(self.seed)
-        start_frame = Frame.random(problem.n, problem.d, rng=rng)
+        if problem.n <= problem.d:
+            frame_vectors = np.eye(problem.d)[: problem.n, :]
+            frame = Frame.from_array(frame_vectors)
+
+            return Result(
+                best_frame=frame,
+                best_coherence=float(coherence(frame)),
+                wall_time_s=0.0,
+            )
+
+        scheduler = self.scheduler_factory()
+        p = scheduler.current_p()
+
         cma = ProjectionCMA(
             n=problem.n,
             d=problem.d,
             sigma0=self.sigma0,
-            start_frame=start_frame,
             popsize=self.popsize,
             seed=self.seed,
         )
-        p = self.scheduler.current_p()
 
-        best_frame = start_frame
+        best_frame = Frame.random(problem.n, problem.d)
         best_coh = float(coherence(best_frame))
 
         t0 = time.perf_counter()
@@ -90,8 +90,8 @@ class ProjectionPRampModel:
                 best_frame = gen_best_frame
 
             cma.tell(population, energies)
+            p, _ = scheduler.update(step=g, global_best_coh=best_coh)
 
-            p, _ = self.scheduler.update(step=g, global_best_coh=best_coh)
         dt = time.perf_counter() - t0
 
         return Result(

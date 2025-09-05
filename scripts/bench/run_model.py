@@ -59,7 +59,7 @@ def load_inputs(
         n_range = sweep["n"]["range"]
         d_values = range(d_range["start"], d_range["stop"], d_range.get("step", 1))
         n_values = range(n_range["start"], n_range["stop"], n_range.get("step", 1))
-        problems = [Problem(n, d) for d in d_values for n in n_values]
+        problems = [Problem(d=d, n=n) for d in d_values for n in n_values]
     else:
         raise ValueError("Inputs YAML must contain either 'problems' or 'sweep'.")
 
@@ -120,7 +120,7 @@ def main() -> None:
     sha = git_sha(repo_root)
     ts = timestamp_utc()
 
-    inputs_name, pairs = load_inputs(args.inputs)
+    inputs_name, problems = load_inputs(args.inputs)
     model_name, model = load_model(args.model_config)
 
     # Output directory: results/runs/<inputs_name>/<model_name>/<timestamp>/
@@ -142,17 +142,14 @@ def main() -> None:
                 "model",
                 "d",
                 "n",
-                "n_seeds",
                 "coh_min",
-                "coh_median",
-                "coh_mean",
-                "coh_max",
                 "wall_time_s_mean",
             ],
         )
         writer.writeheader()
 
-        for problem in pairs:
+        for problem in problems:
+            print(f"Running {model_name} on inputs d={problem.d}, n={problem.n}...")
             result = model.run(problem)
 
             writer.writerow(
@@ -163,7 +160,7 @@ def main() -> None:
                     "model": model_name,
                     "d": problem.d,
                     "n": problem.n,
-                    "coh_min": result.best_coherencecoh_min,
+                    "coh_min": result.best_coherence,
                     "wall_time_s_mean": result.wall_time_s,
                 }
             )

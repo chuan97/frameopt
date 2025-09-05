@@ -146,7 +146,7 @@ class ProjectionCMA:
         # Tell the CMA-ES instance the evaluated fitness values
         self._es.tell(asks, list(energies))
 
-    def run(self, max_gen: int = 200, tol: float = 1e-20, log_every: int = 10) -> Frame:
+    def run(self, max_gen: int = 200, tol: float = 1e-12, log_every: int = 10) -> Frame:
         """
         Run the optimiser until convergence or a generation cap is reached.
 

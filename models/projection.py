@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -12,22 +13,14 @@ from evomof.optim.cma import ProjectionCMA
 from models.api import Problem, Result
 
 
+@dataclass(frozen=True, slots=True)
 class ProjectionModel:
-    def __init__(
-        self,
-        p: int = 2,
-        sigma0: float = 0.5,
-        popsize: int | None = None,
-        max_gen: int = 1000,
-        seed: int | None = None,
-        log_every: int = 0,
-    ):
-        self.p = p
-        self.sigma0 = sigma0
-        self.popsize = popsize
-        self.max_gen = max_gen
-        self.seed = seed
-        self.log_every = log_every
+    p: int = 2
+    sigma0: float = 0.3
+    popsize: int | None = None
+    max_gen: int = 1000
+    seed: int | None = None
+    log_every: int = 0
 
     @property
     def name(self) -> str:
@@ -41,14 +34,20 @@ class ProjectionModel:
         return cls(**init_dict)
 
     def run(self, problem: Problem) -> Result:
-        rng = np.random.default_rng(self.seed)
-        start_frame = Frame.random(problem.n, problem.d, rng=rng)
+        if problem.n <= problem.d:
+            frame_vectors = np.eye(problem.d)[: problem.n, :]
+            frame = Frame.from_array(frame_vectors)
+
+            return Result(
+                best_frame=frame,
+                best_coherence=float(coherence(frame)),
+                wall_time_s=0.0,
+            )
 
         solver = ProjectionCMA(
             n=problem.n,
             d=problem.d,
             sigma0=self.sigma0,
-            start_frame=start_frame,
             popsize=self.popsize,
             seed=self.seed,
             energy_fn=diff_coherence,
@@ -56,7 +55,9 @@ class ProjectionModel:
         )
 
         t0 = time.perf_counter()
-        best_frame = solver.run(max_gen=self.max_gen, log_every=self.log_every)
+        best_frame = solver.run(
+            max_gen=self.max_gen, log_every=self.log_every, tol=1e-12
+        )
         dt = time.perf_counter() - t0
 
         return Result(
