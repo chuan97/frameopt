@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dask.distributed import Client, as_completed
+from dask.distributed import Client, as_completed  # type: ignore
 
 from models.api import Problem
 from scripts._utils import (
@@ -116,6 +116,12 @@ def main() -> None:
         default=Path("results/model-runs"),
         help="Output root directory",
     )
+    ap.add_argument(
+        "--save-frames",
+        action="store_true",
+        default=False,
+        help="Save best Frame for each problem to <out>/.../frames/[d]x[n].npy",
+    )
     args = ap.parse_args()
 
     repo_root = repo_root_from_here()
@@ -128,6 +134,10 @@ def main() -> None:
     # Output directory: results/runs/<inputs_name>/<model_name>/<timestamp>/
     out_dir = args.out / inputs_name / model_name / ts
     ensure_dir(out_dir)
+
+    frames_dir = out_dir / "frames"
+    if args.save_frames:
+        ensure_dir(frames_dir)
 
     # Save the original configs
     (out_dir / "inputs_used.yaml").write_text(args.inputs.read_text())
@@ -150,7 +160,7 @@ def main() -> None:
         )
         writer.writeheader()
 
-        n_cpus = os.cpu_count()
+        n_cpus = os.cpu_count() or 1  # Ensure n_cpus is not None
         if n_cpus < 20:
             n_workers = min(4, int(n_cpus * 0.75))
         else:
@@ -167,6 +177,10 @@ def main() -> None:
 
         for fut in as_completed(futures):
             result = fut.result()
+            if args.save_frames:
+                fname = f"{result.problem.d}x{result.problem.n}.npy"
+                result.best_frame.save_npy(str(frames_dir / fname))
+
             k = result.problem
 
             row = {
