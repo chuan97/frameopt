@@ -69,6 +69,8 @@ class ProjectionCMA:
         if cma_seed is not None:
             cma_opts["seed"] = cma_seed
 
+        cma_opts["verb_disp"] = 0
+
         # Final energy callable expects exactly one Frame positional arg.
         self.energy_fn: Callable[[Frame], float] = partial(
             energy_fn, **(energy_kwargs or {})
@@ -195,7 +197,8 @@ class ProjectionCMA:
                     print(f"Converged (|ΔE| < {tol}) at generation {g}")
                 break
             prev_E = E
-        print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
+        if log_every:
+            print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
         return best_frame
 
     @property
