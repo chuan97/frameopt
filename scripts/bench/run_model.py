@@ -119,7 +119,7 @@ def main() -> None:
     ap.add_argument(
         "--save-frames",
         action="store_true",
-        default=False,
+        default=True,
         help="Save best Frame for each problem to <out>/.../frames/[d]x[n].npy",
     )
     args = ap.parse_args()
