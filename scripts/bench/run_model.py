@@ -195,7 +195,7 @@ def main() -> None:
             }
             buffer[k] = row
 
-            while order_keys[expected_idx] in buffer:
+            while expected_idx < len(problems) and order_keys[expected_idx] in buffer:
                 writer.writerow(buffer.pop(order_keys[expected_idx]))
                 f.flush()
                 expected_idx += 1
