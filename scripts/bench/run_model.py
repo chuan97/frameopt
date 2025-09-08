@@ -53,7 +53,7 @@ def load_inputs(
     problems: list[Problem] = []
 
     if "problems" in data:
-        problems = [Problem(item["n"], item["d"]) for item in data["problems"]]
+        problems = [Problem(d=item["d"], n=item["n"]) for item in data["problems"]]
 
     elif "sweep" in data:
         sweep = data["sweep"]
