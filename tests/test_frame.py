@@ -1,6 +1,6 @@
 import numpy as np
 
-from evomof import Frame
+from evomof.core.frame import Frame
 
 
 def test_random_shape_norms():
