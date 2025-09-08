@@ -25,15 +25,7 @@ def ensure_dir(p: Path) -> None:
 
 
 def git_sha(repo_root: Path) -> str:
-    """Return full git SHA for repo_root, or 'UNKNOWN' if unavailable.
-    If the environment variable EVOMOF_GIT_SHA is set, return its value instead.
-    """
-    import os
-
-    env_sha = os.environ.get("EVOMOF_GIT_SHA")
-    if env_sha:
-        return env_sha
-
+    """Return full git SHA for repo_root, or 'UNKNOWN' if unavailable."""
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True
