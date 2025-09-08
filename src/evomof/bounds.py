@@ -31,7 +31,7 @@ def welch(d: int, n: int) -> float:
     if n <= d:
         return 0.0
 
-    return float(math.sqrt((n - d) / (d * (n - 1))))
+    return math.sqrt((n - d) / (d * (n - 1)))
 
 
 def levenstein(d: int, n: int) -> float:
@@ -54,7 +54,7 @@ def orthoplex(d: int, n: int) -> float:
     """Orthoplex/Rankin case: 1/sqrt(d) when n > d**2, else 0.0."""
     _validate(d, n)
 
-    if n < d**2:
+    if n <= d**2:
         return 0.0
 
     return 1.0 / math.sqrt(d)
