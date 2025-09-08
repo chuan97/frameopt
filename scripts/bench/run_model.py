@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dask.distributed import Client, as_completed  # type: ignore
+from dask.distributed import Client, as_completed
 
 from models.api import Problem
 from scripts._utils import (
@@ -165,7 +165,7 @@ def main() -> None:
             n_workers = min(4, int(n_cpus * 0.75))
         else:
             n_workers = int(n_cpus * 0.95)
-        client = Client(n_workers=n_workers, threads_per_worker=1)
+        client = Client(n_workers=n_workers, threads_per_worker=1)  # type: ignore
 
         futures = client.map(model.run, problems)
 
@@ -175,7 +175,7 @@ def main() -> None:
         expected_idx = 0
         order_keys = list(problems)
 
-        for fut in as_completed(futures):
+        for fut in as_completed(futures):  # type: ignore
             result = fut.result()
             if args.save_frames:
                 fname = f"{result.problem.d}x{result.problem.n}.npy"
