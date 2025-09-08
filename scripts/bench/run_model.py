@@ -164,7 +164,7 @@ def main() -> None:
         if n_cpus < 20:
             n_workers = min(4, int(n_cpus * 0.75))
         else:
-            n_workers = int(n_cpus * 0.9)
+            n_workers = int(n_cpus * 0.95)
         client = Client(n_workers=n_workers, threads_per_worker=1)
 
         futures = client.map(model.run, problems)
