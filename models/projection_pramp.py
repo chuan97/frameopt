@@ -25,7 +25,6 @@ class ProjectionPRampModel:
     popsize: int | None = None
     max_gen: int = 50_000
     seed: int | None = None
-    log_every: int = 0
 
     @property
     def name(self) -> str:
@@ -59,7 +58,7 @@ class ProjectionPRampModel:
             return Result(
                 problem=problem,
                 best_frame=frame,
-                best_coherence=float(coherence(frame)),
+                best_coherence=coherence(frame),
                 wall_time_s=0.0,
             )
 
@@ -75,7 +74,7 @@ class ProjectionPRampModel:
         )
 
         best_frame = Frame.random(problem.n, problem.d)
-        best_coh = float(coherence(best_frame))
+        best_coh = coherence(best_frame)
 
         t0 = time.perf_counter()
         for g in range(1, self.max_gen + 1):
@@ -84,7 +83,7 @@ class ProjectionPRampModel:
 
             idx = int(np.argmin(energies))
             gen_best_frame = population[idx]
-            gen_best_coh = float(coherence(gen_best_frame))
+            gen_best_coh = coherence(gen_best_frame)
 
             if gen_best_coh < best_coh:
                 best_coh = gen_best_coh

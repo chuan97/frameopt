@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from evomof.bounds import max_lower_bound
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
@@ -41,9 +42,11 @@ class ProjectionModel:
             return Result(
                 problem=problem,
                 best_frame=frame,
-                best_coherence=float(coherence(frame)),
+                best_coherence=coherence(frame),
                 wall_time_s=0.0,
             )
+
+        coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
 
         solver = ProjectionCMA(
             n=problem.n,
@@ -55,10 +58,20 @@ class ProjectionModel:
             energy_kwargs={"p": self.p},
         )
 
+        best_frame = Frame.random(problem.n, problem.d)
+        best_coh = coherence(best_frame)
+
         t0 = time.perf_counter()
-        best_frame = solver.run(
-            max_gen=self.max_gen, log_every=self.log_every, tol=1e-20
-        )
+        for _ in range(1, self.max_gen + 1):
+            gen_best_frame, _ = solver.step()
+            gen_best_coh = coherence(gen_best_frame)
+
+            if gen_best_coh < best_coh:
+                best_coh = gen_best_coh
+                best_frame = gen_best_frame
+
+            if best_coh < coh_lower_bound:
+                break
         dt = time.perf_counter() - t0
 
         return Result(
