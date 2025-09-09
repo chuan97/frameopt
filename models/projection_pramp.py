@@ -11,6 +11,7 @@ from typing import cast
 import numpy as np
 import yaml
 
+from evomof.bounds import max_lower_bound
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
@@ -65,6 +66,8 @@ class ProjectionPRampModel:
         scheduler = self.scheduler_factory()
         p = scheduler.current_p()
 
+        coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
+
         cma = ProjectionCMA(
             n=problem.n,
             d=problem.d,
@@ -89,9 +92,11 @@ class ProjectionPRampModel:
                 best_coh = gen_best_coh
                 best_frame = gen_best_frame
 
+            if best_coh < coh_lower_bound:
+                break
+
             cma.tell(population, energies)
             p, _ = scheduler.update(step=g, global_best_coh=best_coh)
-
         dt = time.perf_counter() - t0
 
         return Result(
