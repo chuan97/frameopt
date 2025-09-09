@@ -111,13 +111,11 @@ class ProjectionCMA:
             *Best* frame (after projection) and its energy in the current
             generation.
         """
-        ask = self._es.ask()
-        frames = [realvec_to_frame(x, self.n, self.d) for x in ask]
-        for fr in frames:
-            fr.renormalise()  # project
+        frames = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
-        self._es.tell(ask, energies)
+        self.tell(frames, energies)
         best_idx = int(np.argmin(energies))
+
         return frames[best_idx], float(energies[best_idx])
 
     def ask(self) -> list[Frame]:
@@ -131,6 +129,7 @@ class ProjectionCMA:
         """
         raw = self._es.ask()
         frames = [realvec_to_frame(x, self.n, self.d) for x in raw]
+
         return frames
 
     def tell(self, frames: Sequence[Frame], energies: Sequence[float]) -> None:
@@ -145,7 +144,6 @@ class ProjectionCMA:
             Sequence of objective values corresponding to each frame.
         """
         asks = [frame_to_realvec(fr) for fr in frames]
-        # Tell the CMA-ES instance the evaluated fitness values
         self._es.tell(asks, list(energies))
 
     def run(self, max_gen: int = 200, tol: float = 1e-12, log_every: int = 10) -> Frame:
@@ -179,6 +177,7 @@ class ProjectionCMA:
         """
         if max_gen < 0:
             raise ValueError(f"max_gen must be non-negative, got {max_gen}")
+
         t0 = time.time()
         # Initialize best_frame randomly to handle max_gen=0 cleanly
         best_frame: Frame = Frame.random(self.n, self.d)
@@ -187,18 +186,25 @@ class ProjectionCMA:
 
         for g in range(1, max_gen + 1):
             cand, E = self.step()
+
             if E < best_E:
                 best_frame, best_E = cand.copy(), E
+
             if log_every and g % log_every == 0:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
+
             # convergence check on generation‑best energy
             if tol > 0 and prev_E is not None and abs(prev_E - E) < tol:
                 if log_every:
                     print(f"Converged (|ΔE| < {tol}) at generation {g}")
+
                 break
+
             prev_E = E
+
         if log_every:
             print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
+
         return best_frame
 
     @property
