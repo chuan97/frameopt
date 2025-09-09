@@ -1,5 +1,3 @@
-import typing
-
 import numpy as np
 from pymanopt.manifolds.manifold import Manifold
 
@@ -80,7 +78,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         """
         Zero element of \(T_X\mathcal M\).
         """
-        return typing.cast(Complex128Array, np.zeros_like(X.vectors))
+        return np.zeros_like(X.vectors)
 
     def norm(self, X: Frame, U: np.ndarray) -> float:
         """

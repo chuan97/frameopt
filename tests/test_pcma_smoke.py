@@ -176,3 +176,11 @@ def test_start_frame_is_used():
     algo = ProjectionCMA(n=n, d=d, sigma0=0.4, popsize=10, seed=1, start_frame=init)
     # Mean right after init should equal flattened input
     assert np.allclose(algo.mean, frame_to_realvec(init))
+
+
+def test_frame_to_realvec_and_back():
+    n, d = 6, 4
+    frame = Frame.random(n, d, rng=np.random.default_rng(2024))
+    vec = frame_to_realvec(frame)
+    reconstructed = realvec_to_frame(vec, n, d)
+    assert np.allclose(frame.vectors, reconstructed.vectors)

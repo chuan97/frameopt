@@ -34,7 +34,7 @@ class Frame:
             self.vectors = self.vectors.astype(np.complex128, copy=False)
         # We rely on normalisation/phase fix elsewhere; don't enforce here
 
-    vectors: np.ndarray  # shape (n, d), complex128/complex64
+    vectors: Complex128Array  # shape (n, d)
 
     # --------------------------------------------------------------------- #
     # Constructors
@@ -51,8 +51,9 @@ class Frame:
             raise ValueError("`arr` must be 2-D (n, d)")
 
         vecs = arr.copy() if copy else arr
-        frame = cls(vecs.astype(np.complex128, copy=False))
+        frame = cls(vecs)
         frame.renormalise()
+
         return frame
 
     @classmethod
@@ -102,8 +103,7 @@ class Frame:
     @property
     def gram(self) -> Complex128Array:
         """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
-        g = self.vectors @ self.vectors.conj().T
-        return typing.cast(Complex128Array, g)
+        return self.vectors @ self.vectors.conj().T
 
     def renormalise(self) -> None:
         """
