@@ -15,7 +15,7 @@ def test_ask_returns_correct_population():
     algo = ProjectionCMA(
         n=n, d=d, sigma0=0.5, popsize=popsize, seed=123, energy_kwargs={"p": 4}
     )
-    pop = algo.ask()
+    pop, _ = algo.ask()
     # Check type and length
     assert isinstance(pop, list), "ask() should return a list"
     assert len(pop) == popsize, f"Expected population size {popsize}, got {len(pop)}"
@@ -40,11 +40,11 @@ def test_tell_allows_reinjection_and_continued_optimization():
         n=n, d=d, sigma0=0.3, popsize=popsize, seed=42, energy_kwargs={"p": 6}
     )
     # Sample a population
-    population = algo.ask()
+    population, raws = algo.ask()
     # Provide dummy energies (e.g., all ones)
     energies = [1.0 for _ in population]
     # Reinjection should not raise
-    algo.tell(population, energies)
+    algo.tell(raws, energies)
     # After reinjection, step() should still work
     best_frame, best_energy = algo.step()
     assert isinstance(best_frame, Frame), "step() should return a Frame"

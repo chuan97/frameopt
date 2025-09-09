@@ -81,7 +81,7 @@ class ProjectionPRampModel:
 
         t0 = time.perf_counter()
         for g in range(1, self.max_gen + 1):
-            population = cma.ask()
+            population, raws = cma.ask()
             energies = [diff_coherence(F, p=p) for F in population]
 
             idx = int(np.argmin(energies))
@@ -95,7 +95,7 @@ class ProjectionPRampModel:
             if best_coh < coh_lower_bound:
                 break
 
-            cma.tell(population, energies)
+            cma.tell(raws, energies)
             p, _ = scheduler.update(step=g, global_best_coh=best_coh)
         dt = time.perf_counter() - t0
 
