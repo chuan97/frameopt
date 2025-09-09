@@ -114,9 +114,9 @@ class ProjectionCMA:
         frames = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
         self.tell(frames, energies)
-        best_idx = int(np.argmin(energies))
+        best_idx = np.argmin(energies)
 
-        return frames[best_idx], float(energies[best_idx])
+        return frames[best_idx], energies[best_idx]
 
     def ask(self) -> list[Frame]:
         """
@@ -222,7 +222,7 @@ class ProjectionCMA:
     @sigma.setter
     def sigma(self, value: float) -> None:
         """Set the CMA-ES global step-size σ."""
-        self._es.sigma = float(value)
+        self._es.sigma = value
 
     @property
     def mean(self) -> np.ndarray:
