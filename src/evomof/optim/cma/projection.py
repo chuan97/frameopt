@@ -127,8 +127,8 @@ class ProjectionCMA:
         list[Frame]
             List of projected Frame objects sampled from CMA.
         """
-        raw = self._es.ask()
-        frames = [realvec_to_frame(x, self.n, self.d) for x in raw]
+        raws = self._es.ask()
+        frames = [realvec_to_frame(x, self.n, self.d) for x in raws]
 
         return frames
 
@@ -143,8 +143,8 @@ class ProjectionCMA:
         energies
             Sequence of objective values corresponding to each frame.
         """
-        asks = [frame_to_realvec(fr) for fr in frames]
-        self._es.tell(asks, list(energies))
+        raws = [frame_to_realvec(fr) for fr in frames]
+        self._es.tell(raws, energies)
 
     def run(self, max_gen: int = 200, tol: float = 1e-12, log_every: int = 10) -> Frame:
         """
