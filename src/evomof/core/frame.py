@@ -1,6 +1,7 @@
 # src/evomof/core/frame.py
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 from typing import cast
 
@@ -421,13 +422,25 @@ class Frame:
         Returns
         -------
         Frame
-            A Frame initialized from the loaded array.
-        """
-        arr = np.load(path)
-        f = cls(arr, normalize=False, copy=True)
-        f._is_normalized = False
+            A normalized Frame initialized from the loaded array.
 
-        return f
+        Notes
+        -----
+        If the stored array is not already in canonical normalized form
+        (unit-norm rows with the first non-zero entry real-positive),
+        a RuntimeWarning is emitted and the loaded data are normalized.
+        """
+        raw = np.asarray(np.load(path), dtype=np.complex128)
+        # Build normalized copy using the standard constructor
+        f_norm = cls(raw, normalize=True, copy=True)
+        # Warn if the on-disk data were not already normalized
+        if not np.allclose(f_norm.vectors, raw, rtol=1e-12, atol=1e-15):
+            warnings.warn(
+                f"Loaded frame from {path!s} was not normalized; normalizing on load.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return f_norm
 
     def export_txt(self, path: str) -> None:
         """
@@ -475,7 +488,13 @@ class Frame:
         Returns
         -------
         Frame
-            A Frame initialized from the loaded array.
+            A normalized Frame initialized from the loaded array.
+
+        Notes
+        -----
+        If the stored data are not already in canonical normalized form
+        (unit-norm rows with the first non-zero entry real-positive),
+        a RuntimeWarning is emitted and the loaded data are normalized.
         """
         with open(path) as f:
             lines = f.readlines()
@@ -489,8 +508,15 @@ class Frame:
 
         reals = nums[: n * d].reshape((n, d))
         imags = nums[n * d :].reshape((n, d))
-        arr = reals + 1j * imags
-        fr = cls(arr, normalize=False, copy=True)
-        fr._is_normalized = False
+        raw = (reals + 1j * imags).astype(np.complex128, copy=False)
 
-        return fr
+        # Build normalized copy using the standard constructor
+        f_norm = cls(raw, normalize=True, copy=True)
+        # Warn if the on-disk data were not already normalized
+        if not np.allclose(f_norm.vectors, raw, rtol=1e-12, atol=1e-15):
+            warnings.warn(
+                f"Loaded frame from {path!s} was not normalized; normalizing on load.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return f_norm
