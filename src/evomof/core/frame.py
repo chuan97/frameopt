@@ -132,11 +132,15 @@ class Frame:
 
         self.vectors /= norms
 
-        for vec in self.vectors:
-            nz = np.flatnonzero(vec)
-            if nz.size:
-                phase = np.angle(vec[nz[0]])
-                vec *= np.exp(-1j * phase)
+        # Phase fix: rotate each row so its **first non-zero** entry is real‑positive
+        V = self.vectors
+        n = self.shape[0]
+        nz_mask = np.abs(self.vectors) > 0
+        first_idx = np.argmax(nz_mask, axis=1)  # first True per row
+        pivots = V[np.arange(n), first_idx]  # (n,)
+        phases = np.conj(pivots / np.abs(pivots))  # e^{-i arg(pivot)} without trig
+        V *= phases[:, None]
+
         self.is_normalized = True
 
     # ------------------------------------------------------------------ #
