@@ -19,7 +19,7 @@ class ProjectionCMA:
     Projection-based CMA-ES for unit-norm frames.
 
     1. CMA samples in the ambient R^{2nd}.
-    2. Each sample is reshaped → Frame → renormalised (projection).
+    2. Each sample is reshaped → Frame → normalized (projection).
     3. Energy is evaluated on the projected frame.
 
     Attributes
@@ -100,7 +100,7 @@ class ProjectionCMA:
         --------
         1. Ask pycma for a batch of candidate vectors (ambient ℝ).
         2. Reshape each into a :class:`Frame`, then project back onto the
-           unit‑norm manifold via :pymeth:`Frame.renormalise`.
+           unit‑norm manifold via :pymeth:`Frame.normalize`.
         3. Evaluate the energy function on each projected frame.
         4. Tell pycma the fitness values to update its internal state.
         5. Return the best projected frame of this generation and its energy.
@@ -113,9 +113,6 @@ class ProjectionCMA:
         """
         frames = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
-        assert all(fr.vectors.dtype == np.complex128 for fr in frames)
-        assert np.isfinite(energies).all()
-        assert frames[0].vectors.flags["C_CONTIGUOUS"]
         self.tell(frames, energies)
         best_idx = np.argmin(energies)
 

@@ -60,7 +60,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         """
         new_vecs = X.vectors + U
         # Normalise each row and fix global phase
-        return Frame.from_array(new_vecs, copy=False)
+        return Frame(new_vecs, normalize=True, copy=False)
 
     def log(self, X: Frame, Y: Frame) -> Complex128Array:
         """

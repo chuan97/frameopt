@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import typing
 from collections.abc import Iterator
-from dataclasses import dataclass
 
 import numpy as np
 
@@ -12,7 +11,6 @@ from evomof.core._types import Complex128Array
 __all__ = ["Frame"]
 
 
-@dataclass(slots=True)
 class Frame:
     """
     A collection of `n` complex d-dimensional unit vectors.
@@ -21,40 +19,46 @@ class Frame:
     quotient out the irrelevant global U(1) phase.
     """
 
-    # ------------------------------------------------------------------ #
-    # Dataclass validation                                               #
-    # ------------------------------------------------------------------ #
-
-    def __post_init__(self) -> None:
-        """Ensure internal array is complex128 and 2‑D (n, d)."""
-        if self.vectors.ndim != 2:
-            raise ValueError("Frame.vectors must be 2‑D (n, d)")
-        # Promote to complex128 if necessary (no copy when already correct)
-        if not np.iscomplexobj(self.vectors) or self.vectors.dtype != np.complex128:
-            self.vectors = self.vectors.astype(np.complex128, copy=False)
-        # We rely on normalisation/phase fix elsewhere; don't enforce here
-
-    vectors: Complex128Array  # shape (n, d)
-
-    # --------------------------------------------------------------------- #
-    # Constructors
-    # --------------------------------------------------------------------- #
-
-    @classmethod
-    def from_array(cls, arr: np.ndarray, *, copy: bool = True) -> Frame:
+    def __init__(
+        self, vectors: np.ndarray, *, normalize: bool = True, copy: bool = True
+    ) -> None:
         """
-        Wrap an existing `(n, d)` complex array.
+        Create a Frame from an array of shape (n, d).
 
-        Normalises and fixes phases in-place unless `copy=False` is chosen.
+        Parameters
+        ----------
+        vectors : np.ndarray
+            Complex array of shape (n, d).
+        normalize : bool
+            If True, call normalize() after storing the array.
+        copy : bool
+            If True (default), always make a private copy (safe).
+            If False, require that `vectors` is already complex128,
+            C-contiguous, and owned. Otherwise raises ValueError.
+
+        Notes
+        -----
+        Internally, vectors are always stored as C-contiguous np.complex128.
         """
-        if arr.ndim != 2:
-            raise ValueError("`arr` must be 2-D (n, d)")
+        if vectors.ndim != 2:
+            raise ValueError("`vectors` must be 2-D (n, d)")
 
-        vecs = arr.copy() if copy else arr
-        frame = cls(vecs.astype(np.complex128, copy=False))
-        frame.renormalise()
+        if copy:
+            arr = np.array(vectors, dtype=np.complex128, order="C", copy=True)
+        else:
+            if not (
+                vectors.dtype == np.complex128
+                and vectors.flags["C_CONTIGUOUS"]
+                and vectors.flags["OWNDATA"]
+            ):
+                raise ValueError(
+                    "When copy=False, input must be complex128, C-contiguous, and own its data"
+                )
+            arr = vectors
 
-        return frame
+        self.vectors = arr
+        if normalize:
+            self.normalize()
 
     @classmethod
     def random(
@@ -90,7 +94,7 @@ class Frame:
         """
         rng = rng or np.random.default_rng()
         z = rng.standard_normal((n, d)) + 1j * rng.standard_normal((n, d))
-        return cls.from_array(z, copy=False)
+        return cls(z, normalize=True, copy=False)
 
     # ------------------------------------------------------------------ #
     # Public geometry helpers
@@ -105,7 +109,7 @@ class Frame:
         """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
         return self.vectors @ self.vectors.conj().T
 
-    def renormalise(self) -> None:
+    def normalize(self) -> None:
         """
         In‑place normalisation and gauge fix.
 
@@ -117,6 +121,9 @@ class Frame:
         unchanged.
         """
         norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
+        if np.any(norms == 0) or not np.isfinite(norms).all():
+            raise ValueError("normalize(): zero or non-finite norm in frame vectors")
+
         self.vectors /= norms
 
         for vec in self.vectors:
@@ -150,6 +157,7 @@ class Frame:
             Tangent array of the same shape as the frame.
         """
         inner = np.sum(self.vectors.conj() * arr, axis=1, keepdims=True)
+
         return typing.cast(Complex128Array, arr - inner * self.vectors)
 
     # -------------------------------------------------------------- #
@@ -213,7 +221,8 @@ class Frame:
         scale_cos[small] = 1.0 - 0.5 * norms[small] ** 2
 
         new_vecs = scale_cos * self.vectors + scale_sin * tang
-        return Frame.from_array(new_vecs, copy=False)
+
+        return Frame(new_vecs, normalize=True, copy=False)
 
     def log_map(self, other: Frame) -> Complex128Array:
         """
@@ -261,7 +270,8 @@ class Frame:
 
         diff = other.vectors - inner[:, None] * self.vectors
         tang = scale[:, None] * diff
-        return typing.cast(Complex128Array, tang.astype(np.complex128))
+
+        return typing.cast(Complex128Array, tang)
 
     def transport(
         self, other: Frame, tang: np.ndarray, eps: float = 1e-12
@@ -316,7 +326,7 @@ class Frame:
             idx = bad.ravel()
             transported[idx, :] = other.project(tang[idx, :])
 
-        return typing.cast(Complex128Array, transported.astype(np.complex128))
+        return typing.cast(Complex128Array, transported)
 
     def random_tangent(
         self,
@@ -328,7 +338,7 @@ class Frame:
         Draw a random tangent array at this Frame.
 
         Sampling: i.i.d. complex normal in ambient, projected to the tangent space.
-        If `unit=True`, the result is normalised to Frobenius norm 1.
+        If `unit=True`, the result is normalized to Frobenius norm 1.
 
         Returns
         -------
@@ -338,10 +348,12 @@ class Frame:
         rng = rng or np.random.default_rng()
         Z = rng.standard_normal(self.shape) + 1j * rng.standard_normal(self.shape)
         U = self.project(Z.astype(np.complex128, copy=False))
+
         if unit:
             n = np.linalg.norm(U)
             if n > 0:
                 U = U / n
+
         return U
 
     # ------------------------------------------------------------------ #
@@ -349,7 +361,7 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     def copy(self) -> Frame:
-        return Frame.from_array(self.vectors, copy=True)
+        return Frame(self.vectors, normalize=False, copy=True)
 
     def __iter__(self) -> Iterator[Complex128Array]:
         return iter(self.vectors)
@@ -382,13 +394,14 @@ class Frame:
             A Frame initialized from the loaded array.
         """
         arr = np.load(path)
-        return cls.from_array(arr, copy=False)
+
+        return cls(arr, normalize=False, copy=True)
 
     def export_txt(self, path: str) -> None:
         """
         Export this frame to a text file in the submission format:
         - First all real parts (row-major), one per line, then all imaginary parts.
-        - Each number formatted with 18-digit exponential notation.
+        - Each number formatted with 15-digit exponential notation.
 
         Parameters
         ----------
@@ -398,6 +411,7 @@ class Frame:
         # Flatten row-major: rows are vectors
         flat_real = self.vectors.real.ravel(order="C")
         flat_imag = self.vectors.imag.ravel(order="C")
+
         with open(path, "w") as f:
             for val in flat_real:
                 f.write(f"{val:.15e}\n")
@@ -432,12 +446,16 @@ class Frame:
         """
         with open(path) as f:
             lines = f.readlines()
+
         nums = np.array([float(line.strip()) for line in lines], dtype=np.float64)
+
         if nums.size != 2 * n * d:
             raise ValueError(
                 f"File does not contain 2*n*d={2*n*d} entries (got {nums.size})"
             )
+
         reals = nums[: n * d].reshape((n, d))
         imags = nums[n * d :].reshape((n, d))
         arr = reals + 1j * imags
-        return cls.from_array(arr, copy=False)
+
+        return cls(arr, normalize=False, copy=True)

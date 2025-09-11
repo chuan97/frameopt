@@ -54,7 +54,7 @@ class ProjectionPRampModel:
     def run(self, problem: Problem) -> Result:
         if problem.n <= problem.d:
             frame_vectors = np.eye(problem.d)[: problem.n, :]
-            frame = Frame.from_array(frame_vectors)
+            frame = Frame(frame_vectors)
 
             return Result(
                 problem=problem,

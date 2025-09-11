@@ -2,7 +2,7 @@
 """
 Verify a frame's coherence from a .npy file.
 
-This tool loads a real/complex frame array of shape (n, d), renormalizes rows to
+This tool loads a real/complex frame array of shape (n, d), normalizes rows to
 unit ℓ2 norm, computes the maximum off‑diagonal absolute inner product (the
 coherence) in float64 and, optionally, in high precision via mpmath. It prints a
 human‑readable summary (including top‑K pairs and simple statistics) and can

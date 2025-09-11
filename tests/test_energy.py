@@ -14,7 +14,7 @@ def orthonormal_frame() -> Frame:
     """d × d identity columns → perfect orthonormal frame."""
     d = 4
     id = np.eye(d, dtype=np.complex128)
-    return Frame.from_array(id, copy=False)
+    return Frame(id, copy=False)
 
 
 @pytest.fixture(scope="module")
@@ -75,7 +75,7 @@ def test_diff_coherence_multiple_maxima() -> None:
         ],
         dtype=np.complex128,
     )
-    frame = Frame.from_array(arr, copy=False)
+    frame = Frame(arr, copy=False)
 
     # True coherence: maximum |<fi,fj>| is 1
     mu = coherence(frame)
