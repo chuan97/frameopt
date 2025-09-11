@@ -114,6 +114,7 @@ class ProjectionCMA:
         frames, raws = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
         self.tell(raws, energies)
+
         best_idx = np.argmin(energies)
 
         return frames[best_idx], energies[best_idx]
