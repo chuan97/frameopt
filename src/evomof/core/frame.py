@@ -19,6 +19,8 @@ class Frame:
     quotient out the irrelevant global U(1) phase.
     """
 
+    __slots__ = ("vectors", "is_normalized")
+
     def __init__(
         self, vectors: np.ndarray, *, normalize: bool = True, copy: bool = True
     ) -> None:
@@ -57,6 +59,7 @@ class Frame:
             arr = vectors
 
         self.vectors = arr
+        self.is_normalized = False
         if normalize:
             self.normalize()
 
@@ -120,6 +123,9 @@ class Frame:
         Idempotent: calling this method multiple times leaves ``vectors``
         unchanged.
         """
+        if self.is_normalized:
+            return
+
         norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
         if np.any(norms == 0) or not np.isfinite(norms).all():
             raise ValueError("normalize(): zero or non-finite norm in frame vectors")
@@ -131,6 +137,7 @@ class Frame:
             if nz.size:
                 phase = np.angle(vec[nz[0]])
                 vec *= np.exp(-1j * phase)
+        self.is_normalized = True
 
     # ------------------------------------------------------------------ #
     # Tangent‑space helper                                               #
@@ -361,7 +368,10 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     def copy(self) -> Frame:
-        return Frame(self.vectors, normalize=False, copy=True)
+        f = Frame(self.vectors, normalize=False, copy=True)
+        f.is_normalized = self.is_normalized
+
+        return f
 
     def __iter__(self) -> Iterator[Complex128Array]:
         return iter(self.vectors)
@@ -394,8 +404,10 @@ class Frame:
             A Frame initialized from the loaded array.
         """
         arr = np.load(path)
+        f = cls(arr, normalize=False, copy=True)
+        f.is_normalized = False
 
-        return cls(arr, normalize=False, copy=True)
+        return f
 
     def export_txt(self, path: str) -> None:
         """
@@ -420,6 +432,7 @@ class Frame:
 
     def __repr__(self) -> str:  # pragma: no cover
         n, d = self.shape
+
         return f"Frame(n={n}, d={d})"
 
     @classmethod
@@ -457,5 +470,7 @@ class Frame:
         reals = nums[: n * d].reshape((n, d))
         imags = nums[n * d :].reshape((n, d))
         arr = reals + 1j * imags
+        fr = cls(arr, normalize=False, copy=True)
+        fr.is_normalized = False
 
-        return cls(arr, normalize=False, copy=True)
+        return fr
