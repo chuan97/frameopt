@@ -1,8 +1,8 @@
 # src/evomof/core/frame.py
 from __future__ import annotations
 
-import typing
 from collections.abc import Iterator
+from typing import cast
 
 import numpy as np
 
@@ -19,10 +19,14 @@ class Frame:
     quotient out the irrelevant global U(1) phase.
     """
 
-    __slots__ = ("vectors", "is_normalized")
+    __slots__ = ("_vectors", "_is_normalized")
 
     def __init__(
-        self, vectors: np.ndarray, *, normalize: bool = True, copy: bool = True
+        self,
+        vectors: Complex128Array | np.ndarray,
+        *,
+        normalize: bool = True,
+        copy: bool = True,
     ) -> None:
         """
         Create a Frame from an array of shape (n, d).
@@ -58,10 +62,22 @@ class Frame:
                 )
             arr = vectors
 
-        self.vectors = arr
-        self.is_normalized = False
+        self._vectors = arr
+        self._is_normalized = False
         if normalize:
             self.normalize()
+
+    @property
+    def vectors(self) -> Complex128Array:
+        """Read-only view of the underlying array."""
+        v = self._vectors.view()
+        v.setflags(write=False)
+        return v
+
+    @property
+    def is_normalized(self) -> bool:
+        """Whether this frame has been normalized (rows unit-norm and gauge-fixed)."""
+        return self._is_normalized
 
     @classmethod
     def random(
@@ -105,12 +121,12 @@ class Frame:
 
     @property
     def shape(self) -> tuple[int, int]:
-        return self.vectors.shape
+        return self._vectors.shape
 
     @property
     def gram(self) -> Complex128Array:
         """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
-        return self.vectors @ self.vectors.conj().T
+        return self._vectors @ self._vectors.conj().T
 
     def normalize(self) -> None:
         """
@@ -123,30 +139,30 @@ class Frame:
         Idempotent: calling this method multiple times leaves ``vectors``
         unchanged.
         """
-        if self.is_normalized:
+        if self._is_normalized:
             return
 
-        norms = np.linalg.norm(self.vectors, axis=1, keepdims=True)
+        V = self._vectors
+        norms = np.linalg.norm(V, axis=1, keepdims=True)
         if np.any(norms == 0) or not np.isfinite(norms).all():
             raise ValueError("normalize(): zero or non-finite norm in frame vectors")
 
-        self.vectors /= norms
+        V /= norms
 
         # Phase fix: rotate each row so its **first non-zero** entry is real‑positive
-        V = self.vectors
         n = self.shape[0]
-        nz_mask = np.abs(self.vectors) > 0
+        nz_mask = np.abs(V) > 0
         first_idx = np.argmax(nz_mask, axis=1)  # first True per row
         pivots = V[np.arange(n), first_idx]  # (n,)
         phases = np.conj(pivots / np.abs(pivots))  # e^{-i arg(pivot)} without trig
         V *= phases[:, None]
 
-        self.is_normalized = True
+        self._is_normalized = True
 
     # ------------------------------------------------------------------ #
     # Tangent‑space helper                                               #
     # ------------------------------------------------------------------ #
-    def project(self, arr: np.ndarray) -> Complex128Array:
+    def project(self, arr: Complex128Array | np.ndarray) -> Complex128Array:
         """
         Orthogonally project an ambient array onto the tangent space
         at this frame.
@@ -167,15 +183,15 @@ class Frame:
         Complex128Array
             Tangent array of the same shape as the frame.
         """
-        inner = np.sum(self.vectors.conj() * arr, axis=1, keepdims=True)
+        inner = np.sum(self._vectors.conj() * arr, axis=1, keepdims=True)
 
-        return typing.cast(Complex128Array, arr - inner * self.vectors)
+        return cast(Complex128Array, arr - inner * self._vectors)
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})                #
     # -------------------------------------------------------------- #
 
-    def retract(self, tang: np.ndarray) -> Frame:
+    def retract(self, tang: Complex128Array | np.ndarray) -> Frame:
         """
         Exact exponential-map retraction (per‑row great‑circle step).
 
@@ -231,7 +247,7 @@ class Frame:
         scale_sin[small] = 1.0
         scale_cos[small] = 1.0 - 0.5 * norms[small] ** 2
 
-        new_vecs = scale_cos * self.vectors + scale_sin * tang
+        new_vecs = scale_cos * self._vectors + scale_sin * tang
 
         return Frame(new_vecs, normalize=True, copy=False)
 
@@ -270,7 +286,7 @@ class Frame:
         if self.shape != other.shape:
             raise ValueError("Frame shapes mismatch")
 
-        inner = np.real(np.sum(self.vectors.conj() * other.vectors, axis=1))
+        inner = np.real(np.sum(self._vectors.conj() * other._vectors, axis=1))
         inner = np.clip(inner, -1.0, 1.0)  # numerical safety
         theta = np.arccos(inner)  # angle on the sphere
 
@@ -279,13 +295,13 @@ class Frame:
         scale = np.zeros_like(theta)
         scale[mask] = theta[mask] / np.sin(theta[mask])
 
-        diff = other.vectors - inner[:, None] * self.vectors
+        diff = other._vectors - inner[:, None] * self._vectors
         tang = scale[:, None] * diff
 
-        return typing.cast(Complex128Array, tang)
+        return cast(Complex128Array, tang)
 
     def transport(
-        self, other: Frame, tang: np.ndarray, eps: float = 1e-12
+        self, other: Frame, tang: Complex128Array | np.ndarray, eps: float = 1e-12
     ) -> Complex128Array:
         """
         Exact parallel transport on the CP lift (row-wise), using phase alignment.
@@ -304,8 +320,8 @@ class Frame:
         if tang.shape != self.shape:
             raise ValueError("Tangent array shape mismatch.")
 
-        x = self.vectors  # (n, d)
-        y = other.vectors  # (n, d)
+        x = self._vectors  # (n, d)
+        y = other._vectors  # (n, d)
 
         # Row-wise complex inner product s = <x, y>
         s = np.sum(x.conj() * y, axis=1, keepdims=True)  # (n,1) complex
@@ -337,7 +353,7 @@ class Frame:
             idx = bad.ravel()
             transported[idx, :] = other.project(tang[idx, :])
 
-        return typing.cast(Complex128Array, transported)
+        return cast(Complex128Array, transported)
 
     def random_tangent(
         self,
@@ -372,13 +388,13 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     def copy(self) -> Frame:
-        f = Frame(self.vectors, normalize=False, copy=True)
-        f.is_normalized = self.is_normalized
+        f = Frame(self._vectors, normalize=False, copy=True)
+        f._is_normalized = self._is_normalized
 
         return f
 
     def __iter__(self) -> Iterator[Complex128Array]:
-        return iter(self.vectors)
+        return iter(self._vectors)
 
     def save_npy(self, path: str) -> None:
         """
@@ -390,7 +406,7 @@ class Frame:
             Path where the .npy file will be written.
         """
         # Save the complex array directly
-        np.save(path, self.vectors)
+        np.save(path, self._vectors)
 
     @classmethod
     def load_npy(cls, path: str) -> Frame:
@@ -409,7 +425,7 @@ class Frame:
         """
         arr = np.load(path)
         f = cls(arr, normalize=False, copy=True)
-        f.is_normalized = False
+        f._is_normalized = False
 
         return f
 
@@ -425,8 +441,8 @@ class Frame:
             Path where the .txt file will be written.
         """
         # Flatten row-major: rows are vectors
-        flat_real = self.vectors.real.ravel(order="C")
-        flat_imag = self.vectors.imag.ravel(order="C")
+        flat_real = self._vectors.real.ravel(order="C")
+        flat_imag = self._vectors.imag.ravel(order="C")
 
         with open(path, "w") as f:
             for val in flat_real:
@@ -475,6 +491,6 @@ class Frame:
         imags = nums[n * d :].reshape((n, d))
         arr = reals + 1j * imags
         fr = cls(arr, normalize=False, copy=True)
-        fr.is_normalized = False
+        fr._is_normalized = False
 
         return fr
