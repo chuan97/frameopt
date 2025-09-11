@@ -51,7 +51,7 @@ class Frame:
             raise ValueError("`arr` must be 2-D (n, d)")
 
         vecs = arr.copy() if copy else arr
-        frame = cls(vecs)
+        frame = cls(vecs.astype(np.complex128, copy=False))
         frame.renormalise()
 
         return frame

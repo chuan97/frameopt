@@ -113,6 +113,9 @@ class ProjectionCMA:
         """
         frames = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
+        assert all(fr.vectors.dtype == np.complex128 for fr in frames)
+        assert np.isfinite(energies).all()
+        assert frames[0].vectors.flags["C_CONTIGUOUS"]
         self.tell(frames, energies)
         best_idx = np.argmin(energies)
 

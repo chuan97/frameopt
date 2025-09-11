@@ -17,7 +17,8 @@ def frame_to_realvec(frame: Frame) -> np.ndarray:
     This is the representation expected by ``cma.CMAEvolutionStrategy``,
     which works purely in real Euclidean space.
     """
-    return np.ascontiguousarray(frame.vectors.ravel().view(np.float64))
+    V = np.ascontiguousarray(frame.vectors, dtype=np.complex128)
+    return V.ravel().view(np.float64)
 
 
 def realvec_to_frame(vec: np.ndarray, n: int, d: int) -> Frame:

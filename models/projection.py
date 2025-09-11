@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,7 @@ class ProjectionModel:
         return cls(**init_dict)
 
     def run(self, problem: Problem) -> Result:
+        print(f"Running ProjectionCMA on (n={problem.n}, d={problem.d})")
         if problem.n <= problem.d:
             frame_vectors = np.eye(problem.d)[: problem.n, :]
             frame = Frame.from_array(frame_vectors)
@@ -70,7 +72,12 @@ class ProjectionModel:
                 best_coh = gen_best_coh
                 best_frame = gen_best_frame
 
-            if best_coh < coh_lower_bound:
+            if best_coh < coh_lower_bound or math.isclose(
+                best_coh, coh_lower_bound, abs_tol=1e-10
+            ):
+                print(
+                    f"Reached theoretical lower bound on coherence for d={problem.d}, n={problem.n}"
+                )
                 break
         dt = time.perf_counter() - t0
 
