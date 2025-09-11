@@ -111,15 +111,14 @@ class ProjectionCMA:
             *Best* frame (after projection) and its energy in the current
             generation.
         """
-        frames, raws = self.ask()
+        frames = self.ask()
         energies = [self.energy_fn(fr) for fr in frames]
-        self.tell(raws, energies)
-
+        self.tell(frames, energies)
         best_idx = np.argmin(energies)
 
         return frames[best_idx], energies[best_idx]
 
-    def ask(self) -> tuple[list[Frame], Sequence[np.ndarray]]:
+    def ask(self) -> list[Frame]:
         """
         Sample a new population from CMA-ES and project each into a Frame.
 
@@ -127,25 +126,24 @@ class ProjectionCMA:
         -------
         list[Frame]
             List of projected Frame objects sampled from CMA.
-        Sequence[np.ndarray]
-            The corresponding raw vectors in ℝ^{2nd} as seen by CMA.
         """
         raws = self._es.ask()
         frames = [realvec_to_frame(x, self.n, self.d) for x in raws]
 
-        return frames, raws
+        return frames
 
-    def tell(self, raws: Sequence[np.ndarray], energies: Sequence[float]) -> None:
+    def tell(self, frames: Sequence[Frame], energies: Sequence[float]) -> None:
         """
         Reinject evaluated frames and their energies into the CMA-ES optimizer.
 
         Parameters
         ----------
-        raws
-            Sequence of raw vectors sampled by CMA whose fitness has been evaluated.
+        frames
+            Sequence of Frame objects whose fitness has been evaluated.
         energies
             Sequence of objective values corresponding to each frame.
         """
+        raws = [frame_to_realvec(fr) for fr in frames]
         self._es.tell(raws, energies)
 
     def run(self, max_gen: int = 200, tol: float = 1e-12, log_every: int = 10) -> Frame:

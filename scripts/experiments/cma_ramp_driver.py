@@ -22,7 +22,7 @@ from evomof.optim.utils.p_scheduler import (
     FixedPScheduler,
     Scheduler,
 )
-from scripts._utils import ensure_dir, git_sha, timestamp_utc
+from scripts._utils import assert_git_clean, ensure_dir, git_sha, timestamp_utc
 
 # ------------------------------ config model ------------------------------ #
 
@@ -186,7 +186,7 @@ def run_cma_ramp(
     t0 = time.perf_counter()
 
     for g in range(1, gen + 1):
-        population, raws = cma.ask()
+        population = cma.ask()
         energies = [diff_coherence(F, p=p_exp) for F in population]
 
         idx = int(np.argmin(energies))
@@ -202,7 +202,7 @@ def run_cma_ramp(
             global_best_coh = gen_best_coh
             global_best_frame = gen_best_frame
 
-        cma.tell(raws, energies)
+        cma.tell(population, energies)
 
         elapsed = time.perf_counter() - t0
         sigma_val = getattr(cma, "sigma", None)
@@ -346,7 +346,7 @@ def main() -> None:
     cfg_path = _discover_config(this_file)
 
     # Enforce clean repo for certifiable experiments
-    # assert_git_clean(repo_root)
+    assert_git_clean(repo_root)
     sha = git_sha(repo_root)
 
     cfg = ExperimentConfig.load(cfg_path)
