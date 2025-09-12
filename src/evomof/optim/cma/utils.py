@@ -4,8 +4,6 @@ Helpers to flatten/unflatten Frame objects for pycma.
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 
 from evomof.core._types import Float64Array
@@ -26,8 +24,9 @@ def frame_to_realvec(frame: Frame) -> Float64Array:
     """
     re = frame.vectors.real.ravel(order="C")
     im = frame.vectors.imag.ravel(order="C")
+    vec: Float64Array = np.concatenate([re, im]).astype(np.float64, copy=False)
 
-    return cast(Float64Array, np.concatenate([re, im]).astype(np.float64, copy=False))
+    return vec
 
 
 def realvec_to_frame(vec: Float64Array, n: int, d: int) -> Frame:

@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 import yaml
@@ -31,18 +30,21 @@ class CGPRampModel:
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 
-        scfg = init.get("scheduler")
-        if scfg:
-            mod_name, _, class_name = scfg["import"].partition(":")
-            mod = importlib.import_module(mod_name)
-            sched_cls = cast(type[Scheduler], getattr(mod, class_name))
-            sinit = dict(scfg.get("init", {}))
-            if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
-                sinit["total_steps"] = init["maxiter"] // init["step"]
+        scfg = init["scheduler"]
+        mod_name, _, class_name = scfg["import"].partition(":")
+        mod = importlib.import_module(mod_name)
+        sched_cls = getattr(mod, class_name)
 
-            factory = cast(Callable[[], Scheduler], partial(sched_cls, **sinit))
-            init["scheduler_factory"] = factory
-            init.pop("scheduler", None)
+        sinit = scfg["init"]
+        if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
+            sinit["total_steps"] = init["maxiter"] // init["step"]
+
+        def factory() -> Scheduler:
+            sch: Scheduler = sched_cls(**sinit)
+            return sch
+
+        init["scheduler_factory"] = factory
+        init.pop("scheduler")
 
         return cls(**init)
 

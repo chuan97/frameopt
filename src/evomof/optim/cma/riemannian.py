@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -83,9 +83,9 @@ class _CoordCodec:
         assert U.shape == (self.n, self.d)
         parts: list[Complex128Array] = []
         for i in range(self.n):
-            c = cast(Complex128Array, np.conj(self.Q_blocks[i]).T @ U[i, :])
+            c: Complex128Array = np.conj(self.Q_blocks[i]).T @ U[i, :]
             parts.append(c)
-        c_all = cast(Complex128Array, np.concatenate(parts, axis=0))
+        c_all: Complex128Array = np.concatenate(parts, axis=0)
         y: Float64Array = np.concatenate([c_all.real, c_all.imag], axis=0).astype(
             np.float64, copy=False
         )
@@ -96,7 +96,7 @@ class _CoordCodec:
         assert y.ndim == 1 and y.shape[0] == self.k
         m = self.m
         c = y[:m] + 1j * y[m:]
-        U = np.empty((self.n, self.d), dtype=np.complex128)
+        U: Complex128Array = np.empty((self.n, self.d), dtype=np.complex128)
         off = 0
         for i in range(self.n):
             w = c[off : off + (self.d - 1)]
@@ -104,7 +104,8 @@ class _CoordCodec:
             off += self.d - 1
         # safety: enforce tangency against the *current* frame
         U = self.X.project(U)
-        return cast(Complex128Array, U)
+
+        return U
 
     # transport coord vector y from X to Y
     @staticmethod

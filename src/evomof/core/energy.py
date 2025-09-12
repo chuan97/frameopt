@@ -11,8 +11,6 @@ coherence(frame)
 
 from __future__ import annotations
 
-import typing
-
 import numpy as np
 
 from evomof.core._types import Complex128Array, Float64Array
@@ -26,9 +24,9 @@ from .frame import Frame
 
 def _absolute_inner(frame: Frame) -> Float64Array:
     """Return |⟨f_i, f_j⟩| with diagonal zeros (shape (n, n))."""
-    g = np.abs(frame.gram)
+    g: Float64Array = np.abs(frame.gram).astype(np.float64, copy=False)
     np.fill_diagonal(g, 0.0)
-    return typing.cast(Float64Array, g.astype(np.float64, copy=False))
+    return g
 
 
 # -----------------------------------------------------------------------------#

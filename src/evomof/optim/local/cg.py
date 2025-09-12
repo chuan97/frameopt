@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 from pymanopt import Problem, function
@@ -77,4 +77,6 @@ def minimize(
         **solver_kw,
     )
     result = solver.run(problem, initial_point=frame0)
-    return cast(Frame, result.point)
+    final_frame: Frame = result.point
+
+    return final_frame

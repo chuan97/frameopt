@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -227,7 +227,8 @@ class ProjectionCMA:
     @property
     def mean(self) -> np.ndarray:
         """Current mean vector of the CMA-ES search distribution."""
-        return cast(np.ndarray, self._es.mean)
+        arr: np.ndarray = np.asarray(self._es.mean)  # typed boundary: normalize type
+        return arr
 
     @mean.setter
     def mean(self, value: Sequence[float] | np.ndarray) -> None:

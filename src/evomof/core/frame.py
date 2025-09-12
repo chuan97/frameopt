@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from typing import cast
 
 import numpy as np
 
@@ -185,8 +184,9 @@ class Frame:
             Tangent array of the same shape as the frame.
         """
         inner = np.sum(self._vectors.conj() * arr, axis=1, keepdims=True)
+        out: Complex128Array = arr - inner * self._vectors
 
-        return cast(Complex128Array, arr - inner * self._vectors)
+        return out
 
     # -------------------------------------------------------------- #
     # Manifold operations (sphere product ≅ CP^{d-1})                #
@@ -297,9 +297,9 @@ class Frame:
         scale[mask] = theta[mask] / np.sin(theta[mask])
 
         diff = other._vectors - inner[:, None] * self._vectors
-        tang = scale[:, None] * diff
+        tang: Complex128Array = scale[:, None] * diff
 
-        return cast(Complex128Array, tang)
+        return tang
 
     def transport(
         self, other: Frame, tang: Complex128Array | np.ndarray, eps: float = 1e-12
@@ -347,14 +347,14 @@ class Frame:
         denom_safe[bad] = 1.0
 
         transported_tilde = tang - (dot_yu / denom_safe) * (x + y_tilde)
-        transported = transported_tilde * phase  # rotate back
+        transported: Complex128Array = transported_tilde * phase  # rotate back
 
         # Fallback for (near) antipodal rows: projection transport
         if np.any(bad):
             idx = bad.ravel()
             transported[idx, :] = other.project(tang[idx, :])
 
-        return cast(Complex128Array, transported)
+        return transported
 
     def random_tangent(
         self,
