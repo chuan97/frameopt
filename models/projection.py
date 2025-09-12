@@ -23,10 +23,6 @@ class ProjectionModel:
     max_gen: int = 1000
     seed: int | None = None
 
-    @property
-    def name(self) -> str:
-        return "projection-cma/pure"
-
     @classmethod
     def from_config(cls, path: Path) -> ProjectionModel:
         config = yaml.safe_load(path.read_text())

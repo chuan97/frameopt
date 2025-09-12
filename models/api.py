@@ -22,9 +22,6 @@ class Result:
 
 
 class Model(Protocol):
-    @property
-    def name(self) -> str: ...
-
     def run(self, problem: Problem) -> Result: ...
 
     @classmethod

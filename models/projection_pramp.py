@@ -27,10 +27,6 @@ class ProjectionPRampModel:
     max_gen: int = 50_000
     seed: int | None = None
 
-    @property
-    def name(self) -> str:
-        return "projection-cma/pramp"
-
     @classmethod
     def from_config(cls, path: Path) -> ProjectionPRampModel:
         cfg = yaml.safe_load(path.read_text())

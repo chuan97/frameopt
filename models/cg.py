@@ -20,10 +20,6 @@ class CGModel:
     maxiter: int = 100
     seed: int | None = None
 
-    @property
-    def name(self) -> str:
-        return "conjugate-gradient"
-
     @classmethod
     def from_config(cls, path: Path) -> CGModel:
         config = yaml.safe_load(path.read_text())
