@@ -86,8 +86,10 @@ class _CoordCodec:
             c = cast(Complex128Array, np.conj(self.Q_blocks[i]).T @ U[i, :])
             parts.append(c)
         c_all = cast(Complex128Array, np.concatenate(parts, axis=0))
-        y = np.concatenate([c_all.real, c_all.imag], axis=0).astype(np.float64)
-        return cast(Float64Array, y)
+        y: Float64Array = np.concatenate([c_all.real, c_all.imag], axis=0).astype(
+            np.float64, copy=False
+        )
+        return y
 
     # y ∈ R^k → tangent (n×d complex)
     def decode(self, y: Float64Array) -> Complex128Array:
