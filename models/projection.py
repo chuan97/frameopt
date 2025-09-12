@@ -22,7 +22,6 @@ class ProjectionModel:
     popsize: int | None = None
     max_gen: int = 1000
     seed: int | None = None
-    log_every: int = 0
 
     @property
     def name(self) -> str:
@@ -80,6 +79,6 @@ class ProjectionModel:
         return Result(
             problem=problem,
             best_frame=best_frame,
-            best_coherence=float(coherence(best_frame)),
+            best_coherence=best_coh,
             wall_time_s=dt,
         )
