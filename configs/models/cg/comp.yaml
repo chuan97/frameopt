@@ -1,5 +1,5 @@
 import: models.cg:CGModel
 init:
-  p: 20
-  maxiters: 2000
+  p: 100
+  maxiter: 10000
   seed: 42
