@@ -70,7 +70,17 @@ def minimize(
     problem = Problem(manifold, cost=cost, riemannian_gradient=grad)
     if "max_iterations" in solver_kw:
         raise TypeError("Pass 'maxiter' positional, not in solver_kw")
+
     verbosity = solver_kw.pop("verbosity", 0)
+
+    kwargs = {
+        "max_time": np.inf,
+        "min_gradient_norm": 0.0,
+        "min_step_size": 0.0,
+        "max_cost_evaluations": np.inf,
+    }
+    solver_kw = kwargs | solver_kw
+
     solver = ConjugateGradient(
         max_iterations=maxiter,
         verbosity=verbosity,

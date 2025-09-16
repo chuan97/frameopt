@@ -23,6 +23,7 @@ class ProjectionCGModel:
 
     @classmethod
     def from_config(cls, path: Path) -> ProjectionCGModel:
+        print(path)
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 
