@@ -2,7 +2,7 @@ import: models.cg_pramp:CGPRampModel
 init:
   maxiter: 15000
   seed: 42
-  step: 10
+  step: 20
   scheduler:
     import: evomof.optim.utils.p_scheduler:AdaptivePScheduler
     init:

@@ -92,7 +92,7 @@ class ProjectionPRampModel:
                 best_frame = gen_best_frame
 
             if best_coh < coh_lower_bound or math.isclose(
-                best_coh, coh_lower_bound, abs_tol=1e-10
+                best_coh, coh_lower_bound, abs_tol=1e-9
             ):
                 is_optimal = True
                 break
