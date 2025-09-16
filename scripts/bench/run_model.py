@@ -170,37 +170,47 @@ def main() -> None:
 
         futures = client.map(model.run, problems)
 
-        # Buffer completed results until the next expected problem is available,
-        # then flush sequentially to keep the CSV ordered by input order.
         buffer: dict[Problem, dict[str, Any]] = {}
         expected_idx = 0
         order_keys = list(problems)
 
-        for fut in as_completed(futures):  # type: ignore
-            result = fut.result()
-            if args.save_frames:
-                fname = f"{result.problem.d}x{result.problem.n}.npy"
-                result.best_frame.save_npy(str(frames_dir / fname))
+        try:
+            for fut in as_completed(futures):  # type: ignore
+                result = fut.result()
+                if args.save_frames:
+                    fname = f"{result.problem.d}x{result.problem.n}.npy"
+                    result.best_frame.save_npy(str(frames_dir / fname))
 
-            k = result.problem
+                k = result.problem
 
-            row = {
-                "timestamp": ts,
-                "git_sha": sha,
-                "inputs": inputs_name,
-                "model": model_name,
-                "d": result.problem.d,
-                "n": result.problem.n,
-                "coh_min": result.best_coherence,
-                "optimal": result.extras.get("optimal", None),
-                "wall_time_s_mean": result.wall_time_s,
-            }
-            buffer[k] = row
+                row = {
+                    "timestamp": ts,
+                    "git_sha": sha,
+                    "inputs": inputs_name,
+                    "model": model_name,
+                    "d": result.problem.d,
+                    "n": result.problem.n,
+                    "coh_min": result.best_coherence,
+                    "optimal": result.extras.get("optimal", None),
+                    "wall_time_s_mean": result.wall_time_s,
+                }
+                buffer[k] = row
 
-            while expected_idx < len(problems) and order_keys[expected_idx] in buffer:
-                writer.writerow(buffer.pop(order_keys[expected_idx]))
-                f.flush()
-                expected_idx += 1
+                while (
+                    expected_idx < len(problems) and order_keys[expected_idx] in buffer
+                ):
+                    writer.writerow(buffer.pop(order_keys[expected_idx]))
+                    f.flush()
+                    expected_idx += 1
+
+        except KeyboardInterrupt:
+            # Write out whatever is left in the buffer in any order
+            for row in buffer.values():
+                writer.writerow(row)
+            f.flush()
+
+        finally:
+            client.close()  # type: ignore
 
     print(f"✅ wrote {csv_path}")
 

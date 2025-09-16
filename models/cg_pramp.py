@@ -76,12 +76,11 @@ class CGPRampModel:
 
         t0 = time.perf_counter()
         for i in range(self.maxiter // self.step):
-
             step_best_frame = cg_minimize(
                 frame0=step_best_frame,
                 energy_fn=partial(diff_coherence, p=p),
                 grad_fn=partial(grad_diff_coherence, p=p),
-                maxiter=self.maxiter,
+                maxiter=self.step,
             )
             step_best_coh = coherence(step_best_frame)
 
