@@ -7,5 +7,5 @@ init:
     import: evomof.optim.utils.p_scheduler:AdaptivePScheduler
     init:
       p0: 4.0
-      p_max: 1.0e+15
+      p_max: 1.0e+12
       window: 100
