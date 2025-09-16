@@ -76,7 +76,7 @@ class ProjectionPRampModel:
         best_frame = Frame.random(problem.n, problem.d)
         best_coh = coherence(best_frame)
 
-        is_sota = False
+        is_optimal = False
 
         t0 = time.perf_counter()
         for g in range(1, self.max_gen + 1):
@@ -94,7 +94,7 @@ class ProjectionPRampModel:
             if best_coh < coh_lower_bound or math.isclose(
                 best_coh, coh_lower_bound, abs_tol=1e-10
             ):
-                is_sota = True
+                is_optimal = True
                 break
 
             cma.tell(population, energies)
@@ -106,5 +106,5 @@ class ProjectionPRampModel:
             best_frame=best_frame,
             best_coherence=best_coh,
             wall_time_s=dt,
-            extras={"SOTA": is_sota},
+            extras={"optimal": is_optimal},
         )
