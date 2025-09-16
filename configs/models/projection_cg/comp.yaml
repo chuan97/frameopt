@@ -1,0 +1,5 @@
+import: models.projection_cg:ProjectionCGModel
+init:
+  pmodel: /Users/jroman/Desktop/Code/evoMOF/configs/models/projection_pramp/comp.yaml
+  maxiter: 1000
+  p: 1.0e+9
