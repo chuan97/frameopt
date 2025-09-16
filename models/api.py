@@ -18,7 +18,7 @@ class Result:
     best_frame: Frame
     best_coherence: float
     wall_time_s: float
-    extras: dict[str, Any] | None = None
+    extras: dict[str, Any] = {}
 
 
 class Model(Protocol):
