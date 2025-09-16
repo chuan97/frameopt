@@ -64,8 +64,7 @@ def minimize(
 
     @function.numpy(manifold)  # type: ignore[misc]
     def grad(x: Frame) -> np.ndarray:
-        # Ensure the provided gradient is tangent
-        return manifold.projection(x, grad_fn(x))
+        return grad_fn(x)
 
     problem = Problem(manifold, cost=cost, riemannian_gradient=grad)
     if "max_iterations" in solver_kw:
@@ -87,6 +86,7 @@ def minimize(
         **solver_kw,
     )
     result = solver.run(problem, initial_point=frame0)
+    assert result.stopping_criterion[:35] == "Terminated - max iterations reached"
     final_frame: Frame = result.point
 
     return final_frame
