@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from evomof.core.frame import Frame
@@ -18,7 +18,7 @@ class Result:
     best_frame: Frame
     best_coherence: float
     wall_time_s: float
-    extras: dict[str, Any] = {}
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 class Model(Protocol):
