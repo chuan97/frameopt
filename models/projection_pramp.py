@@ -30,7 +30,7 @@ class ProjectionPRampModel:
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 
-        scfg = init["scheduler"]
+        scfg = init.pop("scheduler")
         mod_name, _, class_name = scfg["import"].partition(":")
         mod = importlib.import_module(mod_name)
         sched_cls = getattr(mod, class_name)
@@ -44,7 +44,6 @@ class ProjectionPRampModel:
             return sch
 
         init["scheduler_factory"] = factory
-        init.pop("scheduler")
 
         return cls(**init)
 
