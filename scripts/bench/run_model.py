@@ -155,6 +155,7 @@ def main() -> None:
                 "d",
                 "n",
                 "coh_min",
+                "optimal",
                 "wall_time_s_mean",
             ],
         )
@@ -191,6 +192,7 @@ def main() -> None:
                 "d": result.problem.d,
                 "n": result.problem.n,
                 "coh_min": result.best_coherence,
+                "optimal": result.extras.get("optimal", None),
                 "wall_time_s_mean": result.wall_time_s,
             }
             buffer[k] = row

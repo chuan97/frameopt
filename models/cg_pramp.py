@@ -72,6 +72,8 @@ class CGPRampModel:
         best_frame = Frame.random(problem.n, problem.d)
         best_coh = coherence(best_frame)
 
+        is_optimal = False
+
         t0 = time.perf_counter()
         for i in range(self.maxiter // self.step):
 
@@ -90,6 +92,7 @@ class CGPRampModel:
             if best_coh < coh_lower_bound or math.isclose(
                 best_coh, coh_lower_bound, abs_tol=1e-10
             ):
+                is_optimal = True
                 break
 
             p, _ = scheduler.update(step=i, global_best_coh=best_coh)
@@ -100,4 +103,5 @@ class CGPRampModel:
             best_frame=best_frame,
             best_coherence=best_coh,
             wall_time_s=dt,
+            extras={"optimal": is_optimal},
         )
