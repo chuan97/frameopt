@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -88,7 +89,9 @@ class ProjectionPRampModel:
                 best_coh = gen_best_coh
                 best_frame = gen_best_frame
 
-            if best_coh < coh_lower_bound:
+            if best_coh < coh_lower_bound or math.isclose(
+                best_coh, coh_lower_bound, abs_tol=1e-10
+            ):
                 break
 
             cma.tell(population, energies)

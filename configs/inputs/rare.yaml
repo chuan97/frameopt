@@ -1,0 +1,5 @@
+sweep:
+  d:
+    range: {start: 8, stop: 10, step: 1}
+  n:
+    range: {start: 10, stop: 91, step: 1}
