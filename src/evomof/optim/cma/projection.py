@@ -100,8 +100,8 @@ class ProjectionCMA:
         Workflow
         --------
         1. Ask pycma for a batch of candidate vectors (ambient ℝ).
-        2. Reshape each into a :class:`Frame`, then project back onto the
-           unit‑norm manifold via :pymeth:`Frame.normalize`.
+        2. Reshape each into a :class:`Frame` and, if needed, project/normalize
+           onto the unit‑norm manifold.
         3. Evaluate the energy function on each projected frame.
         4. Tell pycma the fitness values to update its internal state.
         5. Return the best projected frame of this generation and its energy.
@@ -122,27 +122,31 @@ class ProjectionCMA:
 
     def ask(self) -> list[Float64Array]:
         """
-        Sample a new population from CMA-ES and project each into a Frame.
+        Sample a new population of **raw ambient vectors** from CMA‑ES.
 
         Returns
         -------
-        list[Frame]
-            List of projected Frame objects sampled from CMA.
+        list[Float64Array]
+            The raw vectors returned by :meth:`CMAEvolutionStrategy.ask`.
         """
+        if self._es.condition_number >= 1e12:
+            self._es.alleviate_conditioning()
+
         raws: list[Float64Array] = self._es.ask()
 
         return raws
 
     def tell(self, raws: Sequence[Float64Array], energies: Sequence[float]) -> None:
         """
-        Reinject evaluated frames and their energies into the CMA-ES optimizer.
+        Report fitness values for the **raw vectors** produced by :meth:`ask`.
 
         Parameters
         ----------
-        frames
-            Sequence of Frame objects whose fitness has been evaluated.
+        raws
+            Sequence of raw ambient vectors (same order/batch as returned by
+            :meth:`ask` in the current generation).
         energies
-            Sequence of objective values corresponding to each frame.
+            Objective values corresponding to each vector in ``raws``.
         """
         self._es.tell(raws, energies)
 
