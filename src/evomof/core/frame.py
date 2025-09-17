@@ -197,29 +197,24 @@ class Frame:
         Exact exponential-map retraction (per‑row great‑circle step).
 
         Given a base frame ``self`` and a tangent perturbation ``tang`` lying
-        in the product tangent space
-        :math:`T_{\\text{self}}(S^{2d-1})^{n}`, this method returns a *new*
-        :class:`Frame` whose rows are obtained by moving along the geodesic
-        starting at each original vector:
+        in the product tangent space ``T_self (S^{2d-1})^n``, this method
+        returns a *new* :class:`Frame` whose rows are obtained by moving along
+        the great‑circle geodesic starting at each original vector.
 
-        .. math::
+        Formula (per row)::
 
-            f_i' \;=\; \cos\\lVert\\xi_i\\rVert \, f_i \;+\;
-                     \\frac{\\sin\\lVert\\xi_i\\rVert}{\\lVert\\xi_i\\rVert}\,
-                     \\xi_i,
+            f_i' = cos(||xi_i||) * f_i + (sin(||xi_i||) / ||xi_i||) * xi_i
 
-        where :math:`\\xi_i` is the *i*-th row of ``tang``.  For
-        :math:`\\lVert\\xi_i\\rVert \\to 0` the Taylor expansion reduces to the
-        familiar first‑order update ``f_i + xi_i`` followed by re‑normalisation.
+        where ``xi_i`` is the *i*-th row of ``tang``. For ``||xi_i|| -> 0`` the
+        Taylor expansion reduces to the familiar first‑order update
+        ``f_i + xi_i`` followed by re‑normalisation.
 
         Parameters
         ----------
         tang :
             Complex array of shape ``self.shape`` representing a tangent vector
-            field.  It **must** satisfy
-            :math:`\\operatorname{Re}\\langle f_i, \\xi_i \\rangle = 0`
-            for every row, i.e. it lies in the orthogonal complement of each
-            original vector.
+            field. It **must** satisfy ``Re⟨f_i, xi_i⟩ = 0`` for every row,
+            i.e. it lies in the orthogonal complement of each original vector.
 
         Returns
         -------
