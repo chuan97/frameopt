@@ -42,7 +42,7 @@ def levenstein(d: int, n: int) -> float:
     _validate(d, n)
     m = 1
 
-    if n < d**2:
+    if n <= d**2:
         return 0.0
 
     denominator = (n - d) * (m * d + 1)
