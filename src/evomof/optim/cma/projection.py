@@ -129,9 +129,6 @@ class ProjectionCMA:
         list[Float64Array]
             The raw vectors returned by :meth:`CMAEvolutionStrategy.ask`.
         """
-        if self._es.condition_number >= 1e12:
-            self._es.alleviate_conditioning()
-
         raws: list[Float64Array] = self._es.ask()
 
         return raws
