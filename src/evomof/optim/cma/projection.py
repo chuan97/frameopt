@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 import cma.evolution_strategy as cmaes
+from evomof.core._types import Float64Array
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
 
@@ -111,14 +112,15 @@ class ProjectionCMA:
             *Best* frame (after projection) and its energy in the current
             generation.
         """
-        frames = self.ask()
+        raws = self.ask()
+        frames = [realvec_to_frame(x, self.n, self.d) for x in raws]
         energies = [self.energy_fn(fr) for fr in frames]
-        self.tell(frames, energies)
+        self.tell(raws, energies)
         best_idx = np.argmin(energies)
 
         return frames[best_idx], energies[best_idx]
 
-    def ask(self) -> list[Frame]:
+    def ask(self) -> list[Float64Array]:
         """
         Sample a new population from CMA-ES and project each into a Frame.
 
@@ -127,12 +129,11 @@ class ProjectionCMA:
         list[Frame]
             List of projected Frame objects sampled from CMA.
         """
-        raws = self._es.ask()
-        frames = [realvec_to_frame(x, self.n, self.d) for x in raws]
+        raws: list[Float64Array] = self._es.ask()
 
-        return frames
+        return raws
 
-    def tell(self, frames: Sequence[Frame], energies: Sequence[float]) -> None:
+    def tell(self, raws: Sequence[Float64Array], energies: Sequence[float]) -> None:
         """
         Reinject evaluated frames and their energies into the CMA-ES optimizer.
 
@@ -143,7 +144,6 @@ class ProjectionCMA:
         energies
             Sequence of objective values corresponding to each frame.
         """
-        raws = [frame_to_realvec(fr) for fr in frames]
         self._es.tell(raws, energies)
 
     def run(self, max_gen: int = 200, tol: float = 1e-12, log_every: int = 10) -> Frame:

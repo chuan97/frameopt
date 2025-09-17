@@ -15,7 +15,8 @@ def test_ask_returns_correct_population():
     algo = ProjectionCMA(
         n=n, d=d, sigma0=0.5, popsize=popsize, seed=123, energy_kwargs={"p": 4}
     )
-    pop = algo.ask()
+    raws = algo.ask()
+    pop = [realvec_to_frame(x, n, d) for x in raws]
     # Check type and length
     assert isinstance(pop, list), "ask() should return a list"
     assert len(pop) == popsize, f"Expected population size {popsize}, got {len(pop)}"

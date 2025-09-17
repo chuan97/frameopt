@@ -14,6 +14,7 @@ from evomof.bounds import max_lower_bound
 from evomof.core.energy import coherence, diff_coherence
 from evomof.core.frame import Frame
 from evomof.optim.cma import ProjectionCMA
+from evomof.optim.cma.utils import realvec_to_frame
 from evomof.optim.utils.p_scheduler import Scheduler
 from models.api import Problem, Result
 
@@ -80,11 +81,12 @@ class ProjectionPRampModel:
 
         t0 = time.perf_counter()
         for g in range(1, self.max_gen + 1):
-            population = cma.ask()
-            energies = [diff_coherence(F, p=p) for F in population]
+            raws = cma.ask()
+            frames = [realvec_to_frame(x, problem.n, problem.d) for x in raws]
+            energies = [diff_coherence(fr, p=p) for fr in frames]
 
             idx = int(np.argmin(energies))
-            gen_best_frame = population[idx]
+            gen_best_frame = frames[idx]
             gen_best_coh = coherence(gen_best_frame)
 
             if gen_best_coh < best_coh:
@@ -97,7 +99,7 @@ class ProjectionPRampModel:
                 is_optimal = True
                 break
 
-            cma.tell(population, energies)
+            cma.tell(raws, energies)
             p, _ = scheduler.update(step=g, global_best_coh=best_coh)
         dt = time.perf_counter() - t0
 
