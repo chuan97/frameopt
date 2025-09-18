@@ -13,10 +13,12 @@ __all__ = ["Frame"]
 
 class Frame:
     """
-    A collection of `n` complex d-dimensional unit vectors.
+    A frame represents an element of (CP^{d-1})^n.
 
-    The first non-zero component of every vector is made real-positive to
-    quotient out the irrelevant global U(1) phase.
+    Internally we store one unit-sphere representative per projective vector
+    (one row per vector) and fix the U(1) phase by making the first nonzero
+    component real and positive. Different representatives of the same projective
+    point are therefore identified by construction.
     """
 
     __slots__ = ("_vectors", "_is_normalized")
@@ -69,14 +71,26 @@ class Frame:
 
     @property
     def vectors(self) -> Complex128Array:
-        """Read-only view of the underlying array."""
+        """Read-only view of the underlying array.
+
+        Returns
+        -------
+        Complex128Array
+            Complex128 array of shape (n, d).
+        """
         v = self._vectors.view()
         v.setflags(write=False)
         return v
 
     @property
     def is_normalized(self) -> bool:
-        """Whether this frame has been normalized (rows unit-norm and gauge-fixed)."""
+        """Whether this frame has been normalized (rows unit-norm and gauge-fixed).
+
+        Returns
+        -------
+        bool
+            True if normalized; False otherwise.
+        """
         return self._is_normalized
 
     @classmethod
@@ -88,13 +102,13 @@ class Frame:
     ) -> Frame:
         """
         Return a frame whose rows are sampled uniformly from the unit sphere
-        ``S^{2d-1}`` and then gauge‑fixed.
+        S^{2d-1} and then gauge-fixed, i.e., a random element of (CP^{d-1})^n
+        represented by its unit-sphere lifts.
 
-        Uniformity is achieved by normalising i.i.d. complex‑Gaussian vectors,
-        which is equivalent to taking the first column of a Haar‑random
-        unitary.  The subsequent phase fix (first non‑zero entry real‑positive)
-        chooses one representative per projective equivalence class and does
-        **not** bias the distribution.
+        Uniformity is achieved by normalizing i.i.d. complex-Gaussian vectors,
+        which is equivalent to taking the first column of a Haar-random unitary.
+        The subsequent phase fix (first nonzero entry real and positive) chooses one
+        representative per projective class and does not bias the distribution.
 
         Parameters
         ----------
@@ -121,23 +135,40 @@ class Frame:
 
     @property
     def shape(self) -> tuple[int, int]:
+        """Return the dimensions of the frame.
+
+        Returns
+        -------
+        tuple[int, int]
+            (n, d) = (number of rows, complex dimension).
+        """
         return self._vectors.shape
 
     @property
     def gram(self) -> Complex128Array:
-        """Return the complex Gram matrix ``G = V V†`` of shape ``(n, n)``."""
+        """Return the complex Gram matrix G = V V^H (Hermitian transpose).
+
+        Returns
+        -------
+        Complex128Array
+            Hermitian (n, n) Gram matrix.
+        """
         return self._vectors @ self._vectors.conj().T
 
     def normalize(self) -> None:
         """
-        In‑place normalisation and gauge fix.
+        In-place normalization and phase gauge fix.
 
         * Each row is scaled to unit L2 norm.
         * The global U(1) phase is removed by rotating every vector so that
-            its first non‑zero component becomes real‑positive.
+            its first nonzero component becomes real and positive.
 
         Idempotent: calling this method multiple times leaves ``vectors``
         unchanged.
+
+        Returns
+        -------
+        None
         """
         if self._is_normalized:
             return
@@ -149,7 +180,7 @@ class Frame:
 
         V /= norms
 
-        # Phase fix: rotate each row so its **first non-zero** entry is real‑positive
+        # Phase fix: rotate each row so its **first nonzero** entry is real and positive
         n = self.shape[0]
         nz_mask = np.abs(V) > 0
         first_idx = np.argmax(nz_mask, axis=1)  # first True per row
@@ -159,9 +190,9 @@ class Frame:
 
         self._is_normalized = True
 
-    # ------------------------------------------------------------------ #
-    # Tangent‑space helper                                               #
-    # ------------------------------------------------------------------ #
+    # -------------------------------------------------------------- #
+    # Manifold operations for (CP^{d-1})^n via unit‑sphere representatives (Hopf lift)
+    # -------------------------------------------------------------- #
     def project(self, arr: Complex128Array | np.ndarray) -> Complex128Array:
         """
         Orthogonally project an ambient array onto the tangent space
@@ -170,7 +201,9 @@ class Frame:
         For each row ``i`` the projection subtracts the
         inner product with the base vector so that the result satisfies
 
-        ``⟨f_i, ξ_i⟩ = 0``.
+        <f_i, xi_i> = 0.
+
+        This enforces full complex orthogonality, i.e., a genuine (CP^{d-1})^n tangent (not just sphere tangency Re <f_i, xi_i> = 0).
 
         Parameters
         ----------
@@ -188,44 +221,37 @@ class Frame:
 
         return out
 
-    # -------------------------------------------------------------- #
-    # Manifold operations (sphere product ≅ CP^{d-1})                #
-    # -------------------------------------------------------------- #
-
     def retract(self, tang: Complex128Array | np.ndarray) -> Frame:
         """
-        Exact exponential-map retraction (per‑row great‑circle step).
+        Exponential-map retraction on (CP^{d-1})^n (implemented via the sphere lift).
 
-        Given a base frame ``self`` and a tangent perturbation ``tang`` lying
-        in the product tangent space ``T_self (S^{2d-1})^n``, this method
-        returns a *new* :class:`Frame` whose rows are obtained by moving along
-        the great‑circle geodesic starting at each original vector.
+        Given a base frame (self) and a CP-tangent perturbation (tang), this method
+        returns a new Frame obtained by moving, for each row, along the great-circle
+        in the unit sphere (the horizontal lift), which projects to the CP geodesic.
 
-        Formula (per row)::
+        Formula (per row):
 
-            f_i' = cos(||xi_i||) * f_i + (sin(||xi_i||) / ||xi_i||) * xi_i
+            f_i' = cos(||xi_i||)*f_i + (sin(||xi_i||)/||xi_i||)*xi_i
 
-        where ``xi_i`` is the *i*-th row of ``tang``. For ``||xi_i|| -> 0`` the
-        Taylor expansion reduces to the familiar first‑order update
-        ``f_i + xi_i`` followed by re‑normalisation.
+        where xi_i is the i-th row of tang. For ||xi_i|| -> 0 the Taylor expansion
+        reduces to the first-order update f_i + xi_i followed by renormalization.
 
         Parameters
         ----------
         tang :
-            Complex array of shape ``self.shape`` representing a tangent vector
-            field. It **must** satisfy ``Re⟨f_i, xi_i⟩ = 0`` for every row,
-            i.e. it lies in the orthogonal complement of each original vector.
+            Complex array of shape self.shape representing a tangent vector field.
+            It must satisfy <f_i, xi_i> = 0 (complex orthogonality) for every row;
+            call project() if unsure.
 
         Returns
         -------
         Frame
-            A new frame with the same shape as ``self`` whose rows remain
-            unit‑norm and have the same fixed global phase convention.
+            New frame with the same shape as self, normalized and gauge-fixed.
 
         Raises
         ------
         ValueError
-            If the shape of ``tang`` is different from that of the base frame.
+            If tang.shape != self.shape.
         """
         if tang.shape != self.shape:
             raise ValueError("Tangent array shape mismatch.")
@@ -249,35 +275,31 @@ class Frame:
 
     def log_map(self, other: Frame) -> Complex128Array:
         """
-        Compute the exact Riemannian logarithmic map on the product sphere.
+        Riemannian logarithm between frames (computed on the sphere lift).
 
-        Given two frames with identical shape, this returns a tangent array
-        ``xi`` such that::
+        This computes, row-wise, the logarithm for the sphere geometry and returns
+        a tangent array satisfying Re <f_i, xi_i> = 0. If you need the logarithm in
+        (CP^{d-1})^n, first phase-align each row of "other" to "self" (so that
+        <f_i, g_i> is real and nonnegative), then call this method.
 
-            self.retract(xi) == other      (up to numerical precision)
-
-        Each row‐pair ``(f_i, g_i)`` is treated independently:
-
-        * θ = arccos Re⟨f_i, g_i⟩  is the great‑circle distance.
-        * xi_i = (θ / sin θ) · (g_i − cos θ · f_i)
-
-        The result lives in the tangent space ``T_self M`` and satisfies
-        ``Re⟨f_i, xi_i⟩ = 0`` for every i.
+        Each row-pair (f_i, g_i) is treated independently:
+          * theta = arccos( Re <f_i, g_i> )      # great-circle distance
+          * xi_i  = (theta / sin(theta)) * ( g_i - cos(theta) * f_i )
 
         Parameters
         ----------
-        other :
-            Target frame with the same ``(n, d)`` shape.
+        other : Frame
+            Target frame with the same (n, d) shape.
 
         Returns
         -------
-        np.ndarray
-            Tangent array of shape ``self.shape`` (complex128).
+        Complex128Array
+            Tangent array of shape (n, d) at self.
 
         Raises
         ------
         ValueError
-            If ``other`` does not have the same shape as ``self``.
+            If other.shape != self.shape.
         """
         if self.shape != other.shape:
             raise ValueError("Frame shapes mismatch")
@@ -300,16 +322,33 @@ class Frame:
         self, other: Frame, tang: Complex128Array | np.ndarray, eps: float = 1e-12
     ) -> Complex128Array:
         """
-        Exact parallel transport on the CP lift (row-wise), using phase alignment.
+        Exact parallel transport on (CP^{d-1})^n via the sphere lift (row-wise), using phase alignment.
         For each row:
-        - Let s = <x,y>. Set phase = s/|s| (or 1 if |s|≈0),
-            y_tilde = y / phase so <x,y_tilde>∈R_{>=0}.
-        - Apply sphere PT with y_tilde:
-            xi_tilde = U - (<y_tilde,U>/(1+<x,y_tilde>)) (x + y_tilde).
-        - Rotate back: xi = phase * xi_tilde.
+          - Let s = <x, y>. Set phase = s/|s| (or 1 if |s| ~ 0). Define y_tilde = y / phase so that <x, y_tilde> is real and >= 0.
+          - Apply sphere PT with y_tilde:
+              xi_tilde = U - ( <y_tilde, U> / (1 + <x, y_tilde>) ) * ( x + y_tilde ).
+          - Rotate back: xi = phase * xi_tilde.
 
-        This preserves tangency (⟨y,xi⟩=0)
-        and the tangent norm exactly in exact arithmetic.
+        This preserves tangency (<y, xi> = 0) and the tangent norm exactly in exact arithmetic.
+
+        Parameters
+        ----------
+        other : Frame
+            Target frame with the same (n, d) shape.
+        tang : Complex128Array | np.ndarray
+            Tangent at self to be transported to "other". Must satisfy <self[i], tang[i]> = 0 per row.
+        eps : float, optional
+            Numerical threshold to detect near-zero denominators / antipodal cases (default 1e-12).
+
+        Returns
+        -------
+        Complex128Array
+            Transported tangent at "other", shape (n, d).
+
+        Raises
+        ------
+        ValueError
+            If shapes of "other" or "tang" do not match self.shape.
         """
         if other.shape != self.shape:
             raise ValueError("Frame shapes mismatch")
@@ -359,14 +398,22 @@ class Frame:
     ) -> Complex128Array:
         """
         Draw a random tangent array at this Frame.
+        The projection enforces <f_i, xi_i> = 0, i.e., a bona fide (CP^{d-1})^n tangent.
 
         Sampling: i.i.d. complex normal in ambient, projected to the tangent space.
-        If `unit=True`, the result is normalized to Frobenius norm 1.
+        If unit=True, the result is normalized to Frobenius norm 1.
+
+        Parameters
+        ----------
+        rng : numpy.random.Generator | None
+            Optional generator for reproducibility. If None, uses a fresh default generator.
+        unit : bool, keyword-only
+            If True (default), normalize the tangent to Frobenius norm 1.
 
         Returns
         -------
         Complex128Array
-            Shape == self.shape, tangent at `self`.
+            Tangent array of shape (n, d) at self.
         """
         rng = rng or np.random.default_rng()
         Z = rng.standard_normal(self.shape) + 1j * rng.standard_normal(self.shape)
@@ -384,12 +431,25 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     def copy(self) -> Frame:
+        """Return a shallow copy of this Frame (vectors are copied; normalization flag preserved).
+
+        Returns
+        -------
+        Frame
+            New Frame with the same data and is_normalized flag.
+        """
         f = Frame(self._vectors, normalize=False, copy=True)
         f._is_normalized = self._is_normalized
-
         return f
 
     def __iter__(self) -> Iterator[Complex128Array]:
+        """Iterate over row vectors.
+
+        Returns
+        -------
+        Iterator[Complex128Array]
+            Iterator yielding each row (shape (d,)) as a complex vector.
+        """
         return iter(self._vectors)
 
     def save_npy(self, path: str) -> None:
@@ -400,6 +460,10 @@ class Frame:
         ----------
         path : str
             Path where the .npy file will be written.
+
+        Returns
+        -------
+        None
         """
         # Save the complex array directly
         np.save(path, self._vectors)
@@ -447,6 +511,10 @@ class Frame:
         ----------
         path : str
             Path where the .txt file will be written.
+
+        Returns
+        -------
+        None
         """
         # Flatten row-major: rows are vectors
         flat_real = self._vectors.real.ravel(order="C")
