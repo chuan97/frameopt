@@ -19,10 +19,16 @@ __all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
 
 
 def _chi_mean(k: int) -> float:
-    """E||N(0, I_k)|| — mean of the chi distribution with k dof."""
-    from math import gamma, sqrt
+    """E||N(0, I_k)|| — mean of the chi distribution with k dof (stable).
 
-    return float(sqrt(2.0) * gamma((k + 1.0) / 2.0) / gamma(k / 2.0))
+    Computed via log‑gamma to avoid overflow: √2·Γ((k+1)/2)/Γ(k/2).
+    """
+    from math import exp, lgamma, log
+
+    if k <= 0:
+        return 0.0
+    a = 0.5 * log(2.0) + lgamma((k + 1.0) / 2.0) - lgamma(k / 2.0)
+    return float(exp(a))
 
 
 def _householder_basis(x: np.ndarray) -> Complex128Array:
