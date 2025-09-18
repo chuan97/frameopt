@@ -275,16 +275,21 @@ class Frame:
 
     def log_map(self, other: Frame) -> Complex128Array:
         """
-        Riemannian logarithm between frames (computed on the sphere lift).
+        Riemannian logarithm in (CP^{d-1})^n (via horizontal lift).
 
-        This computes, row-wise, the logarithm for the sphere geometry and returns
-        a tangent array satisfying Re <f_i, xi_i> = 0. If you need the logarithm in
-        (CP^{d-1})^n, first phase-align each row of "other" to "self" (so that
-        <f_i, g_i> is real and nonnegative), then call this method.
+        This returns the CP tangent xi at "self" such that exp_self(xi) reaches "other"
+        in projective space, computed row-wise by phase-aligning and using the
+        great-circle formula on the unit-sphere lift.
 
-        Each row-pair (f_i, g_i) is treated independently:
-          * theta = arccos( Re <f_i, g_i> )      # great-circle distance
-          * xi_i  = (theta / sin(theta)) * ( g_i - cos(theta) * f_i )
+        For each row (f, g):
+          1) s = <f, g> (complex)
+          2) phase = s/|s| if |s| > eps else 1; define g_tilde = g / phase so that <f, g_tilde> is real and >= 0
+          3) c = clip( Re <f, g_tilde>, 0, 1 ); theta = arccos(c)
+          4) xi = (theta / sin(theta)) * ( g_tilde - c * f )      if theta > eps
+                 0                                                otherwise
+
+        The result satisfies <f, xi> = 0 (complex orthogonality), i.e., it is a bona fide
+        CP tangent. When "other" equals "self" up to a global phase, the logarithm is zero.
 
         Parameters
         ----------
@@ -294,7 +299,7 @@ class Frame:
         Returns
         -------
         Complex128Array
-            Tangent array of shape (n, d) at self.
+            Tangent array of shape (n, d) at self (complex orthogonal row-wise).
 
         Raises
         ------
@@ -304,22 +309,38 @@ class Frame:
         if self.shape != other.shape:
             raise ValueError("Frame shapes mismatch")
 
-        inner = np.real(np.sum(self._vectors.conj() * other._vectors, axis=1))
-        inner = np.clip(inner, -1.0, 1.0)  # numerical safety
-        theta = np.arccos(inner)  # angle on the sphere
+        eps = 1e-12
 
-        # Avoid division by zero for identical vectors
-        mask = theta > 1e-12
+        f = self._vectors  # (n, d)
+        g = other._vectors  # (n, d)
+
+        # Row-wise inner products s = <f, g> (complex)
+        s = np.sum(f.conj() * g, axis=1, keepdims=True)  # (n,1)
+        abs_s = np.abs(s)
+
+        # Phase-align so that <f, g_tilde> is real and nonnegative
+        phase = np.ones_like(s, dtype=np.complex128)
+        nz = abs_s > eps
+        phase[nz] = s[nz] / abs_s[nz]  # e^{i φ}
+        g_tilde = g / phase
+
+        # c = cos(theta) in [0, 1], numerically clipped
+        c = np.real(np.sum(f.conj() * g_tilde, axis=1))  # (n,)
+        c = np.clip(c, 0.0, 1.0)
+        theta = np.arccos(c)  # (n,)
+
+        # Avoid division by zero when theta ~ 0
+        mask = theta > eps
         scale = np.zeros_like(theta)
         scale[mask] = theta[mask] / np.sin(theta[mask])
 
-        diff = other._vectors - inner[:, None] * self._vectors
-        tang: Complex128Array = scale[:, None] * diff
+        diff = g_tilde - c[:, None] * f
+        xi: Complex128Array = scale[:, None] * diff
 
-        return tang
+        return xi
 
     def transport(
-        self, other: Frame, tang: Complex128Array | np.ndarray, eps: float = 1e-12
+        self, other: Frame, tang: Complex128Array, eps: float = 1e-12
     ) -> Complex128Array:
         """
         Exact parallel transport on (CP^{d-1})^n via the sphere lift (row-wise), using phase alignment.
@@ -335,7 +356,7 @@ class Frame:
         ----------
         other : Frame
             Target frame with the same (n, d) shape.
-        tang : Complex128Array | np.ndarray
+        tang : Complex128Array
             Tangent at self to be transported to "other". Must satisfy <self[i], tang[i]> = 0 per row.
         eps : float, optional
             Numerical threshold to detect near-zero denominators / antipodal cases (default 1e-12).
