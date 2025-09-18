@@ -8,12 +8,10 @@ import numpy as np
 
 from evomof.core._types import Complex128Array
 
-__all__ = ["Frame"]
-
 
 class Frame:
     """
-    A frame represents an element of (CP^{d-1})^n.
+    A frame represents an element of (CP^{d−1})ⁿ.
 
     Internally we store one unit-sphere representative per projective vector
     (one row per vector) and fix the U(1) phase by making the first nonzero
@@ -38,7 +36,7 @@ class Frame:
         vectors : np.ndarray
             Complex array of shape (n, d).
         normalize : bool
-            If True, call normalize() after storing the array.
+            If True, call :meth:`normalize` after storing the array.
         copy : bool
             If True (default), always make a private copy (safe).
             If False, require that `vectors` is already complex128,
@@ -102,8 +100,8 @@ class Frame:
     ) -> Frame:
         """
         Return a frame whose rows are sampled uniformly from the unit sphere
-        S^{2d-1} and then gauge-fixed, i.e., a random element of (CP^{d-1})^n
-        represented by its unit-sphere lifts.
+        S^{2d−1} and then gauge‑fixed, i.e., a random element of (CP^{d−1})ⁿ
+        represented by its unit‑sphere lifts.
 
         Uniformity is achieved by normalizing i.i.d. complex-Gaussian vectors,
         which is equivalent to taking the first column of a Haar-random unitary.
@@ -146,7 +144,7 @@ class Frame:
 
     @property
     def gram(self) -> Complex128Array:
-        """Return the complex Gram matrix G = V V^H (Hermitian transpose).
+        """Return the complex Gram matrix G = V Vᴴ (Hermitian transpose).
 
         Returns
         -------
@@ -201,9 +199,9 @@ class Frame:
         For each row ``i`` the projection subtracts the
         inner product with the base vector so that the result satisfies
 
-        <f_i, xi_i> = 0.
+        ⟨f_i, ξ_i⟩ = 0.
 
-        This enforces full complex orthogonality, i.e., a genuine (CP^{d-1})^n tangent (not just sphere tangency Re <f_i, xi_i> = 0).
+        This enforces full complex orthogonality, i.e., a genuine (CP^{d−1})ⁿ tangent (not just sphere tangency Re ⟨f_i, ξ_i⟩ = 0).
 
         Parameters
         ----------
@@ -223,30 +221,30 @@ class Frame:
 
     def retract(self, tang: Complex128Array | np.ndarray) -> Frame:
         """
-        Exponential-map retraction on (CP^{d-1})^n (implemented via the sphere lift).
+        Exponential‑map retraction on (CP^{d−1})ⁿ (implemented via the sphere lift).
 
-        Given a base frame (self) and a CP-tangent perturbation (tang), this method
-        returns a new Frame obtained by moving, for each row, along the great-circle
+        Given a base frame (self) and a CP‑tangent perturbation (tang), this method
+        returns a new :class:`Frame` obtained by moving, for each row, along the great‑circle
         in the unit sphere (the horizontal lift), which projects to the CP geodesic.
 
         Formula (per row):
 
-            f_i' = cos(||xi_i||)*f_i + (sin(||xi_i||)/||xi_i||)*xi_i
+            f_i′ = cos(‖ξ_i‖)·f_i + (sin(‖ξ_i‖)/‖ξ_i‖)·ξ_i
 
-        where xi_i is the i-th row of tang. For ||xi_i|| -> 0 the Taylor expansion
-        reduces to the first-order update f_i + xi_i followed by renormalization.
+        where ξ_i is the i‑th row of tang. For ‖ξ_i‖ → 0 the Taylor expansion
+        reduces to the first‑order update f_i + ξ_i followed by renormalization.
 
         Parameters
         ----------
         tang :
             Complex array of shape self.shape representing a tangent vector field.
-            It must satisfy <f_i, xi_i> = 0 (complex orthogonality) for every row;
-            call project() if unsure.
+            It must satisfy ⟨f_i, ξ_i⟩ = 0 (complex orthogonality) for every row;
+            call :meth:`project` if unsure.
 
         Returns
         -------
-        Frame
-            New frame with the same shape as self, normalized and gauge-fixed.
+        :class:`Frame`
+            New frame with the same shape as self, normalized and gauge‑fixed.
 
         Raises
         ------
@@ -275,25 +273,25 @@ class Frame:
 
     def log_map(self, other: Frame) -> Complex128Array:
         """
-        Riemannian logarithm in (CP^{d-1})^n (via horizontal lift).
+        Riemannian logarithm in (CP^{d−1})ⁿ (via horizontal lift).
 
-        This returns the CP tangent xi at "self" such that exp_self(xi) reaches "other"
-        in projective space, computed row-wise by phase-aligning and using the
-        great-circle formula on the unit-sphere lift.
+        This returns the CP tangent ξ at "self" such that exp_self(ξ) reaches "other"
+        in projective space, computed row‑wise by phase‑aligning and using the
+        great‑circle formula on the unit‑sphere lift.
 
         For each row (f, g):
-          1) s = <f, g> (complex)
-          2) phase = s/|s| if |s| > eps else 1; define g_tilde = g / phase so that <f, g_tilde> is real and >= 0
-          3) c = clip( Re <f, g_tilde>, 0, 1 ); theta = arccos(c)
-          4) xi = (theta / sin(theta)) * ( g_tilde - c * f )      if theta > eps
+          1) s = ⟨f, g⟩ (complex)
+          2) phase = s/|s| if |s| > eps else 1; define g̃ = g / phase so that ⟨f, g̃⟩ is real and ≥ 0
+          3) c = clip(Re⟨f, g̃⟩, 0, 1); θ = arccos(c)
+          4) ξ = (θ/sin θ) · ( g̃ − c · f )      if θ > eps
                  0                                                otherwise
 
-        The result satisfies <f, xi> = 0 (complex orthogonality), i.e., it is a bona fide
+        The result satisfies ⟨f, ξ⟩ = 0 (complex orthogonality), i.e., it is a bona fide
         CP tangent. When "other" equals "self" up to a global phase, the logarithm is zero.
 
         Parameters
         ----------
-        other : Frame
+        other : :class:`Frame`
             Target frame with the same (n, d) shape.
 
         Returns
@@ -343,21 +341,21 @@ class Frame:
         self, other: Frame, tang: Complex128Array, eps: float = 1e-12
     ) -> Complex128Array:
         """
-        Exact parallel transport on (CP^{d-1})^n via the sphere lift (row-wise), using phase alignment.
+        Exact parallel transport on (CP^{d−1})ⁿ via the sphere lift (row‑wise), using phase alignment.
         For each row:
-          - Let s = <x, y>. Set phase = s/|s| (or 1 if |s| ~ 0). Define y_tilde = y / phase so that <x, y_tilde> is real and >= 0.
-          - Apply sphere PT with y_tilde:
-              xi_tilde = U - ( <y_tilde, U> / (1 + <x, y_tilde>) ) * ( x + y_tilde ).
-          - Rotate back: xi = phase * xi_tilde.
+          - Let s = ⟨x, y⟩. Set phase = s/|s| (or 1 if |s| ≈ 0). Define ỹ = y / phase so that ⟨x, ỹ⟩ is real and ≥ 0.
+          - Apply sphere PT with ỹ:
+              ξ̃ = U − ( ⟨ỹ, U⟩ / (1 + ⟨x, ỹ⟩) ) · ( x + ỹ ).
+          - Rotate back: ξ = phase · ξ̃.
 
-        This preserves tangency (<y, xi> = 0) and the tangent norm exactly in exact arithmetic.
+        This preserves tangency (⟨y, ξ⟩ = 0) and the tangent norm exactly in exact arithmetic.
 
         Parameters
         ----------
-        other : Frame
+        other : :class:`Frame`
             Target frame with the same (n, d) shape.
         tang : Complex128Array
-            Tangent at self to be transported to "other". Must satisfy <self[i], tang[i]> = 0 per row.
+            Tangent at self to be transported to "other". Must satisfy ⟨self[i], tang[i]⟩ = 0 per row.
         eps : float, optional
             Numerical threshold to detect near-zero denominators / antipodal cases (default 1e-12).
 
@@ -419,7 +417,7 @@ class Frame:
     ) -> Complex128Array:
         """
         Draw a random tangent array at this Frame.
-        The projection enforces <f_i, xi_i> = 0, i.e., a bona fide (CP^{d-1})^n tangent.
+        The projection enforces ⟨f_i, ξ_i⟩ = 0, i.e., a bona fide (CP^{d−1})ⁿ tangent.
 
         Sampling: i.i.d. complex normal in ambient, projected to the tangent space.
         If unit=True, the result is normalized to Frobenius norm 1.
@@ -452,11 +450,11 @@ class Frame:
     # ------------------------------------------------------------------ #
 
     def copy(self) -> Frame:
-        """Return a shallow copy of this Frame (vectors are copied; normalization flag preserved).
+        """Return a shallow copy of this :class:`Frame` (vectors are copied; normalization flag preserved).
 
         Returns
         -------
-        Frame
+        :class:`Frame`
             New Frame with the same data and is_normalized flag.
         """
         f = Frame(self._vectors, normalize=False, copy=True)
@@ -501,7 +499,7 @@ class Frame:
 
         Returns
         -------
-        Frame
+        :class:`Frame`
             A normalized Frame initialized from the loaded array.
 
         Notes
@@ -571,7 +569,7 @@ class Frame:
 
         Returns
         -------
-        Frame
+        :class:`Frame`
             A normalized Frame initialized from the loaded array.
 
         Notes

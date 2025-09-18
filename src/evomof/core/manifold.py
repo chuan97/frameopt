@@ -4,12 +4,10 @@ from pymanopt.manifolds.manifold import Manifold
 from evomof.core._types import Complex128Array
 from evomof.core.frame import Frame
 
-__all__: list[str] = ["FrameManifold"]
-
 
 class FrameManifold(Manifold):  # type: ignore[misc]
     """
-    Pymanopt-compatible manifold for :class:`Frame` on (CP^{d-1})^n.
+    Pymanopt-compatible manifold for :class:`Frame` on (CP^{d−1})ⁿ.
 
     A point is represented by a :class:`Frame` (one unit-sphere representative per row with
     a fixed U(1) phase). This wraps frame-level operations so generic Riemannian optimizers
@@ -17,11 +15,11 @@ class FrameManifold(Manifold):  # type: ignore[misc]
 
     Metric
     ------
-    Real part of the Frobenius inner product: <U, V> = Re tr(U^H V).
+    Real part of the Frobenius inner product: ⟨U, V⟩ = Re tr(Uᴴ V).
 
     Dimension
     ---------
-    2*n*(d - 1) = 2*n*d - 2*n.
+    2·n·(d−1) = 2·n·d − 2·n.
     """
 
     def __init__(self, n: int, d: int):
@@ -49,7 +47,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         :class:`Frame`
-            Random point on (CP^{d-1})^n represented as a frame.
+            Random point on (CP^{d−1})ⁿ represented as a frame.
         """
         return Frame.random(self._n, self._d, rng=rng)
 
@@ -67,13 +65,13 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         Complex128Array
-            Tangent at ``X`` of shape (n, d) with <X[i], out[i]> = 0 per row.
+            Tangent at ``X`` of shape (n, d) with ⟨X[i], out[i]⟩ = 0 per row.
         """
         return X.project(U)
 
     def exp(self, X: Frame, U: np.ndarray) -> Frame:
         """
-        Exact exponential map on (CP^{d-1})^n via :meth:`Frame.retract` (per-row CP geodesic using the sphere lift).
+        Exact exponential map on (CP^{d−1})ⁿ via :meth:`Frame.retract` (per‑row CP geodesic using the sphere lift).
 
         Parameters
         ----------
@@ -141,7 +139,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         float
-            Re tr(U^H V).
+            Re tr(Uᴴ V).
         """
         return float(np.real(np.sum(U.conj() * V)))
 
@@ -175,7 +173,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
         Returns
         -------
         float
-            sqrt( Re tr(U^H U) ).
+            √(Re tr(Uᴴ U)).
         """
         return float(np.sqrt(self.inner_product(X, U, U)))
 
@@ -201,7 +199,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
 
     def transport(self, X: Frame, Y: Frame, U: np.ndarray) -> Complex128Array:
         """
-        Parallel transport from ``X`` to ``Y`` on (CP^{d-1})^n; delegates to :meth:`Frame.transport`.
+        Parallel transport from ``X`` to ``Y`` on (CP^{d−1})ⁿ; delegates to :meth:`Frame.transport`.
 
         Parameters
         ----------
@@ -221,7 +219,7 @@ class FrameManifold(Manifold):  # type: ignore[misc]
 
     def dist(self, X: Frame, Y: Frame) -> float:
         """
-        Geodesic distance on (CP^{d-1})^n computed as the Frobenius norm of the per-row CP log map (via :meth:`Frame.log_map`).
+        Geodesic distance on (CP^{d−1})ⁿ computed as the Frobenius norm of the per‑row CP log map (via :meth:`Frame.log_map`).
 
         Parameters
         ----------

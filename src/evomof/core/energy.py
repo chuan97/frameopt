@@ -1,12 +1,13 @@
 """
-Energy / potential functions for complex unit‑norm frames.
+Energy and potential functions for frames (points in (CP^{d−1})ⁿ).
 
-Public API
-----------
-frame_potential(frame, p)
-riesz_energy(frame, s)
-diff_coherence(frame, p)
-coherence(frame)
+Public functions
+----------------
+- :func:`frame_potential`
+- :func:`diff_coherence`
+- :func:`coherence`
+- :func:`grad_frame_potential`
+- :func:`grad_diff_coherence`
 """
 
 from __future__ import annotations
@@ -23,7 +24,19 @@ from .frame import Frame
 
 
 def _absolute_inner(frame: Frame) -> Float64Array:
-    """Return |⟨f_i, f_j⟩| with diagonal zeros (shape (n, n))."""
+    """
+    Return |⟨f_i, f_j⟩| with zeros on the diagonal.
+
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Input frame.
+
+    Returns
+    -------
+    Float64Array
+        Array of shape (n, n) with absolute inner products and zero diagonal.
+    """
     g: Float64Array = np.abs(frame.gram).astype(np.float64, copy=False)
     np.fill_diagonal(g, 0.0)
     return g
@@ -36,15 +49,14 @@ def _absolute_inner(frame: Frame) -> Float64Array:
 
 def frame_potential(frame: Frame, p: float = 4.0) -> float:
     """
-    p‑frame potential  Φ_p(F) = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
+    p‑frame potential: Φ_p(F) = ∑_{i≠j} |⟨f_i, f_j⟩|^{2p}.
 
     Parameters
     ----------
-    frame :
+    frame : :class:`Frame`
         Input frame.
-    p :
-        Positive real exponent.  Even integers appear in Welch/Riesz bounds;
-        a larger *p* penalises large overlaps more aggressively.
+    p : float, optional
+        Positive real exponent (default 4.0). Larger p penalizes large overlaps more.
 
     Raises
     ------
@@ -66,18 +78,27 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
     """
     Differentiable surrogate for frame coherence.
 
-    Underflow‑free evaluation of
-        (Φ_p(F))^{1/(2p)}  with  Φ_p(F) = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
+    Computes L_p(F) = (Φ_p(F))^{1/(2p)} with Φ_p(F) = ∑_{i≠j} |⟨f_i, f_j⟩|^{2p},
+    using an underflow‑stable evaluation by factoring out the largest overlap G⋆:
 
-    We factor out the largest overlap G* to avoid |g|^{2p} underflow:
-        L = G* * ( Σ (|g_ij|/G*)^{2p} )^{1/(2p)}
+        L_p = G⋆ · ( ∑ (|g_{ij}|/G⋆)^{2p} )^{1/(2p)}
 
-    As *p*→∞ this approaches a multiple of the true coherence µ(F).
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Input frame.
+    p : float, optional
+        Positive exponent (default 16.0).
 
     Raises
     ------
     ValueError
         If ``p`` is not positive.
+
+    Returns
+    -------
+    float
+        Smooth proxy for coherence; approaches a multiple of the true coherence as p → ∞.
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
@@ -99,24 +120,31 @@ def diff_coherence(frame: Frame, p: float = 16.0) -> float:
 
 def coherence(frame: Frame) -> float:
     """
-    True frame coherence µ(F) = max_{i<j} |⟨f_i,f_j⟩|.
+    True frame coherence μ(F) = max_{i<j} |⟨f_i, f_j⟩|.
 
-    Non‑differentiable but useful for reporting final results.
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Input frame.
+
+    Returns
+    -------
+    float
+        Maximum absolute inner product between distinct rows.
     """
     return float(_absolute_inner(frame).max())
 
 
 def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     """
-    Analytic Riemannian gradient of the *p*-frame potential.
+    Analytic Riemannian gradient of the p‑frame potential on (CP^{d−1})ⁿ.
 
     Parameters
     ----------
-    frame :
-        The current frame :math:`F \\in (S^{2d-1})^{n}`.
-    p :
-        Positive exponent in the potential
-        :math:`\\Phi_p(F) = \\sum_{i\\neq j} |\\langle f_i,f_j\\rangle|^{2p}`.
+    frame : :class:`Frame`
+        Current frame (base point).
+    p : float, optional
+        Positive exponent in Φ_p(F) (default 4.0).
 
     Raises
     ------
@@ -126,8 +154,9 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     Returns
     -------
     Complex128Array
-        Tangent array of shape ``frame.shape`` satisfying
-        :math:`\\operatorname{Re}\\langle f_i,\\xi_i\\rangle = 0` for every row.
+        Tangent array of shape ``frame.shape`` satisfying ⟨f_i, ξ_i⟩ = 0 per row
+        (complex orthogonality). Implemented as an ambient gradient projected with
+        :meth:`Frame.project`.
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
@@ -144,16 +173,27 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
 
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     """
-    Underflow‑free gradient of the differentiable coherence surrogate
-        L_p(F) = (Φ_p(F))^{1/(2p)}  with  Φ_p = Σ_{i≠j} |⟨f_i,f_j⟩|^{2p}.
+    Gradient of the differentiable coherence surrogate L_p(F) on (CP^{d−1})ⁿ.
 
-    Using q = 2p and G* = max |⟨f_i,f_j⟩|, define r_ij = (|g_ij|/G*)^q and
-    S = Σ r_ij. Then
+    Uses the same G⋆-factoring as :func:`diff_coherence` to avoid underflow.
 
-        L_p = G* S^{1/q},
-        ∇L_p = (2 L_p / S) Σ_{j≠i} r_ij * g_ij / |g_ij|^2 f_j,
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Current frame (base point).
+    p : float, optional
+        Positive exponent (default 16.0).
 
-    implemented without forming |g_ij|^{q} explicitly.
+    Raises
+    ------
+    ValueError
+        If ``p`` is not positive.
+
+    Returns
+    -------
+    Complex128Array
+        Tangent array of shape ``frame.shape`` with ⟨f_i, ξ_i⟩ = 0 per row,
+        obtained by projecting the ambient gradient via :meth:`Frame.project`.
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
