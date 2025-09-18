@@ -15,8 +15,8 @@ from __future__ import annotations
 import numpy as np
 
 from evomof.core._types import Complex128Array, Float64Array
-
-from .frame import Frame
+from evomof.core.frame import Frame
+from evomof.core.manifold import PRODUCT_CP
 
 # -----------------------------------------------------------------------------#
 # Helper utilities                                                             #
@@ -155,8 +155,8 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     -------
     Complex128Array
         Tangent array of shape ``frame.shape`` satisfying ⟨f_i, ξ_i⟩ = 0 per row
-        (complex orthogonality). Implemented as an ambient gradient projected with
-        :meth:`Frame.project`.
+        (complex orthogonality). Implemented as an ambient gradient projected onto the
+        tangent using the geometry policy (:class:`ProductCP`).
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
@@ -168,7 +168,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     coeff = 2 * q * abs_pow * g  # factor 2 accounts for (i,j) and (j,i) contributions
     np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
-    return frame.project(grad)
+    return PRODUCT_CP.project(frame, grad)
 
 
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
@@ -193,7 +193,8 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     -------
     Complex128Array
         Tangent array of shape ``frame.shape`` with ⟨f_i, ξ_i⟩ = 0 per row,
-        obtained by projecting the ambient gradient via :meth:`Frame.project`.
+        obtained by projecting the ambient gradient onto the tangent using the geometry
+        policy (:class:`ProductCP`).
     """
     if p <= 0:
         raise ValueError("Exponent p must be positive.")
@@ -218,4 +219,4 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     coeff[mask] = (2.0 * L / S) * r[mask] * g[mask] / (abs_g[mask] ** 2)
     np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
-    return frame.project(grad)
+    return PRODUCT_CP.project(frame, grad)
