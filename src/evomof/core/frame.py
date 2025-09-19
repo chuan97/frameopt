@@ -13,8 +13,8 @@ class Frame:
     """
     A frame represents an element of (CP^{d−1})ⁿ.
 
-    Internally we store one unit-sphere representative per projective vector
-    (one row per vector) and fix the U(1) phase by making the first nonzero
+    Internally we store one unit‑sphere representative per projective vector
+    (one row per vector) and fix the U(1) phase by making the **largest‑magnitude**
     component real and positive. Different representatives of the same projective
     point are therefore identified by construction.
     """
@@ -159,7 +159,7 @@ class Frame:
 
         * Each row is scaled to unit L2 norm.
         * The global U(1) phase is removed by rotating every vector so that
-            its first nonzero component becomes real and positive.
+            its **largest‑magnitude** component becomes real and positive.
 
         Idempotent: calling this method multiple times leaves ``vectors``
         unchanged.
@@ -178,11 +178,10 @@ class Frame:
 
         V /= norms
 
-        # Phase fix: rotate each row so its **first nonzero** entry is real and positive
+        # Phase fix: rotate each row so its **largest‑magnitude** entry is real and positive
         n = self.shape[0]
-        nz_mask = np.abs(V) > 0
-        first_idx = np.argmax(nz_mask, axis=1)  # first True per row
-        pivots = V[np.arange(n), first_idx]  # (n,)
+        piv_idx = np.argmax(np.abs(V), axis=1)
+        pivots = V[np.arange(n), piv_idx]  # (n,)
         phases = np.conj(pivots / np.abs(pivots))  # e^{-i arg(pivot)} without trig
         V *= phases[:, None]
 
@@ -252,7 +251,7 @@ class Frame:
         Notes
         -----
         If the stored array is not already in canonical normalized form
-        (unit-norm rows with the first non-zero entry real-positive),
+        (unit‑norm rows with the largest‑magnitude entry real‑positive),
         a RuntimeWarning is emitted and the loaded data are normalized.
         """
         raw = np.asarray(np.load(path), dtype=np.complex128)
@@ -322,7 +321,7 @@ class Frame:
         Notes
         -----
         If the stored data are not already in canonical normalized form
-        (unit-norm rows with the first non-zero entry real-positive),
+        (unit‑norm rows with the largest‑magnitude entry real‑positive),
         a RuntimeWarning is emitted and the loaded data are normalized.
         """
         with open(path) as f:
