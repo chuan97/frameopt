@@ -321,7 +321,6 @@ class Chart:
     Q_blocks: tuple[np.ndarray, ...]
     geom: ProductCP = PRODUCT_CP
 
-    # ---------- factory ----------
     @classmethod
     def at(cls, frame: Frame, *, geom: ProductCP | None = None) -> Chart:
         """Build a chart anchored at ``frame`` with cached per‑row bases."""
@@ -337,7 +336,6 @@ class Chart:
 
         return cls(frame=frame, Q_blocks=tuple(Q_blocks), geom=g)
 
-    # ---------- public API ----------
     def dim(self) -> int:
         """Return real tangent dimension ``k = 2·n·(d−1)``."""
         n, d = self.frame.vectors.shape
@@ -372,6 +370,7 @@ class Chart:
             c = Qi.conj().T @ U[i]
             Y[i, :r] = np.real(c)
             Y[i, r:] = np.imag(c)
+
         return Y.ravel()
 
     def decode(self, y: Float64Array) -> Complex128Array:
@@ -396,6 +395,7 @@ class Chart:
             raise ValueError(
                 f"Coordinate length mismatch: got {y.size}, expected {expected}."
             )
+
         Y = y.reshape(n, 2 * r)
         U = np.empty_like(f)
         for i in range(n):
@@ -404,6 +404,7 @@ class Chart:
             cim = Y[i, r:]
             c = cre + 1j * cim
             U[i] = Qi @ c
+
         # Kill numerical drift along the base vector
         return self.geom.project(self.frame, U)
 
@@ -411,6 +412,7 @@ class Chart:
         """Transport coordinates ``y`` from this chart to chart ``to``."""
         U = self.decode(y)
         V = self.geom.transport(self.frame, to.frame, U)
+
         return to.encode(V)
 
     def transport_basis(self, to: Chart, B: Float64Array) -> Float64Array:
@@ -430,19 +432,18 @@ class Chart:
         numpy.ndarray
             Real matrix of shape ``(k, r)`` with orthonormal columns (Euclidean).
         """
-        if B.ndim != 2 or B.shape[0] != self.dim():
-            raise ValueError("Basis shape mismatch with chart dimension.")
         k, r = B.shape
+        if B.ndim != 2 or k != self.dim():
+            raise ValueError("Basis shape mismatch with chart dimension.")
         if r == 0:
             return B.copy()
-        cols = []
-        for j in range(r):
-            cols.append(self.transport_coords(to, B[:, j]))
+
+        cols = [self.transport_coords(to, B[:, j]) for j in range(r)]
         M = np.column_stack(cols)
         Q, _ = np.linalg.qr(M, mode="reduced")
+
         return Q
 
-    # ---------- helpers ----------
     @staticmethod
     def _orth_basis_row(f: np.ndarray, eps: float = 1e-12) -> np.ndarray:
         """
