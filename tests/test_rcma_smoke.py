@@ -2,6 +2,7 @@ import numpy as np
 
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
+from evomof.core.manifold import PRODUCT_CP
 
 # Import the user-facing RCMA class (wrapper around the engine)
 from evomof.optim.cma.riemannian import RiemannianCMA
@@ -104,7 +105,7 @@ def test_start_frame_is_used_with_small_sigma():
     # Measure average geodesic distance (via log map norm)
     dists = []
     for fr in pop:
-        xi = init.log_map(fr)
+        xi = PRODUCT_CP.log_map(init, fr)
         dists.append(np.linalg.norm(xi))
     mean_dist = float(np.mean(dists))
 

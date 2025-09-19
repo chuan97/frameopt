@@ -20,6 +20,7 @@ from evomof.core.energy import (
     grad_frame_potential,
 )
 from evomof.core.frame import Frame
+from evomof.core.manifold import PRODUCT_CP
 
 # ---------------------------- helpers ---------------------------------
 
@@ -28,8 +29,8 @@ def fd_directional_derivative(
     energy_fn, frame: Frame, tangent: np.ndarray, eps: float
 ) -> float:
     """Central finite difference in direction *tangent*."""
-    f_plus = frame.retract(eps * tangent)
-    f_minus = frame.retract(-eps * tangent)
+    f_plus = PRODUCT_CP.retract(frame, eps * tangent)
+    f_minus = PRODUCT_CP.retract(frame, -eps * tangent)
     return (energy_fn(f_plus) - energy_fn(f_minus)) / (2 * eps)
 
 
@@ -68,10 +69,8 @@ def test_gradient_finite_difference(energy_fn_raw, grad_fn_raw, kwargs):
     rng = np.random.default_rng(123)
     F = Frame.random(n, d, rng=rng)
 
-    # Build random unit tangent vector.
-    U = rng.standard_normal(F.shape) + 1j * rng.standard_normal(F.shape)
-    U = F.project(U)
-    U /= np.linalg.norm(U)
+    # Build random unit tangent vector via the geometry policy.
+    U = PRODUCT_CP.random_tangent(F, rng=rng, unit=True)
 
     eps = 1e-6
 

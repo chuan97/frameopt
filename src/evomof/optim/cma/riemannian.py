@@ -11,6 +11,7 @@ import numpy as np
 from evomof.core._types import Complex128Array, Float64Array
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
+from evomof.core.manifold import PRODUCT_CP
 
 __all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
 
@@ -109,8 +110,7 @@ class _CoordCodec:
             U[i, :] = self.Q_blocks[i] @ w
             off += self.d - 1
         # safety: enforce tangency against the *current* frame
-        U = self.X.project(U)
-
+        U = PRODUCT_CP.project(self.X, U)
         return U
 
     # transport coord vector y from X to Y
@@ -118,7 +118,7 @@ class _CoordCodec:
     def transport_coords(y: Float64Array, X: Frame, Y: Frame) -> Float64Array:
         codec_X = _CoordCodec(X)
         U = codec_X.decode(y)
-        V = X.transport(Y, U)
+        V = PRODUCT_CP.transport(X, Y, U)
         codec_Y = _CoordCodec(Y)
         y_new = codec_Y.encode(V)
         return y_new
@@ -362,7 +362,7 @@ class RiemannianCMA:
         self._last_steps = []
         for i in range(lam):
             U = codec.decode(y[:, i])
-            Xi = st.X.retract(st.sigma * U)
+            Xi = PRODUCT_CP.retract(st.X, st.sigma * U)
             cands.append(Xi)
             self._last_steps.append(y[:, i].copy())
         return cands
@@ -435,7 +435,7 @@ class RiemannianCMA:
         # --- move the mean and build the new chart -------------------------
         codec_X = _CoordCodec(st.X)
         U_bar = codec_X.decode(y_bar)
-        X_new = st.X.retract(st.sigma * U_bar)
+        X_new = PRODUCT_CP.retract(st.X, st.sigma * U_bar)
         codec_Y = _CoordCodec(X_new)
 
         # --- build T (old -> new) via (d-1) parallel transports ------------
@@ -450,7 +450,7 @@ class RiemannianCMA:
             Uj = np.empty((n, d), dtype=np.complex128)
             for i in range(n):
                 Uj[i, :] = Qx[i][:, j]
-            Vj = st.X.transport(X_new, Uj)  # (n, d)
+            Vj = PRODUCT_CP.transport(st.X, X_new, Uj)  # (n, d)
             V_cols.append(Vj)
 
         blocks_real: list[np.ndarray] = []
