@@ -415,35 +415,6 @@ class Chart:
 
         return to.encode(V)
 
-    def transport_basis(self, to: Chart, B: Float64Array) -> Float64Array:
-        """
-        Transport a set of coordinate directions (columns of ``B``) and
-        re‑orthonormalize with a real QR.
-
-        Parameters
-        ----------
-        to : Chart
-            Target chart.
-        B : numpy.ndarray
-            Real matrix of shape ``(k, r)`` with coordinate directions.
-
-        Returns
-        -------
-        numpy.ndarray
-            Real matrix of shape ``(k, r)`` with orthonormal columns (Euclidean).
-        """
-        k, r = B.shape
-        if B.ndim != 2 or k != self.dim():
-            raise ValueError("Basis shape mismatch with chart dimension.")
-        if r == 0:
-            return B.copy()
-
-        cols = [self.transport_coords(to, B[:, j]) for j in range(r)]
-        M = np.column_stack(cols)
-        Q, _ = np.linalg.qr(M, mode="reduced")
-
-        return Q
-
     @staticmethod
     def _orth_basis_row(f: np.ndarray, eps: float = 1e-12) -> np.ndarray:
         """
