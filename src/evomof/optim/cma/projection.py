@@ -220,18 +220,8 @@ class ProjectionCMA:
         """
         return float(self._es.sigma)
 
-    @sigma.setter
-    def sigma(self, value: float) -> None:
-        """Set the CMA-ES global step-size σ."""
-        self._es.sigma = value
-
     @property
     def mean(self) -> np.ndarray:
         """Current mean vector of the CMA-ES search distribution."""
         arr: np.ndarray = np.asarray(self._es.mean)  # typed boundary: normalize type
         return arr
-
-    @mean.setter
-    def mean(self, value: Sequence[float] | np.ndarray) -> None:
-        """Overwrite the CMA search mean with *value*."""
-        self._es.mean = np.asarray(value, dtype=float)
