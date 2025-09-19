@@ -4,14 +4,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from math import exp, lgamma, log
 from typing import Any
 
 import numpy as np
 
-from evomof.core._types import Complex128Array, Float64Array
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP
+from evomof.core.manifold import PRODUCT_CP, Chart
 
 __all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
 
@@ -24,119 +24,17 @@ def _chi_mean(k: int) -> float:
 
     Computed via log‑gamma to avoid overflow: √2·Γ((k+1)/2)/Γ(k/2).
     """
-    from math import exp, lgamma, log
-
     if k <= 0:
         return 0.0
     a = 0.5 * log(2.0) + lgamma((k + 1.0) / 2.0) - lgamma(k / 2.0)
-    return float(exp(a))
 
-
-def _householder_basis(x: np.ndarray) -> Complex128Array:
-    """Return Q ∈ C^{d×(d-1)} with columns orthonormal and orthogonal to x.
-
-    x is assumed nonzero; rows of Frame are unit in practice.
-    """
-    x = np.asarray(x, dtype=np.complex128)
-    d = x.shape[0]
-    nrm = np.linalg.norm(x)
-    if nrm == 0:
-        id = np.eye(d, dtype=np.complex128)
-        return id[:, 1:]
-    v = x / nrm
-    a0 = v[0]
-    phase = a0 / np.abs(a0) if np.abs(a0) > 0 else 1.0 + 0j
-    u = v.copy()
-    u[0] += phase
-    un = np.linalg.norm(u)
-    if un < 1e-14:
-        id = np.eye(d, dtype=np.complex128)
-        return id[:, 1:]
-    u /= un
-    H = np.eye(d, dtype=np.complex128) - 2.0 * np.outer(u, np.conj(u))
-    Q = H[:, 1:]
-    return Q
-
-
-class _CoordCodec:
-    """
-    Helper class to encode and decode tangent vectors to/from real coordinate arrays
-    at a given Frame.
-
-    Coordinates are real vectors of length k = 2*n*(d-1), obtained by concatenating
-    the real and imaginary parts of complex coefficients
-    in the per-row Householder basis Q_j.
-
-    Methods:
-        encode(U): Convert a tangent vector (complex array) to real coordinates.
-        decode(y): Convert real coordinates back to a tangent vector.
-        transport_coords(y, X, Y): Transport coordinate vector y from tangent space
-            at X to tangent space at Y.
-        transport_basis(B, X, Y): Transport a matrix of basis vectors
-            from tangent space at X to Y.
-    """
-
-    def __init__(self, X: Frame):
-        self.X = X
-        self.n, self.d = X.shape
-        self.m = self.n * (self.d - 1)  # complex coordinate length
-        self.k = 2 * self.m  # real coordinate length
-        self.Q_blocks: list[Complex128Array] = [
-            _householder_basis(X.vectors[i, :]) for i in range(self.n)
-        ]
-
-    # tangent (n×d complex) → y ∈ R^k
-    def encode(self, U: Complex128Array) -> Float64Array:
-        assert U.shape == (self.n, self.d)
-        parts: list[Complex128Array] = []
-        for i in range(self.n):
-            c: Complex128Array = np.conj(self.Q_blocks[i]).T @ U[i, :]
-            parts.append(c)
-        c_all: Complex128Array = np.concatenate(parts, axis=0)
-        y: Float64Array = np.concatenate([c_all.real, c_all.imag], axis=0).astype(
-            np.float64, copy=False
-        )
-        return y
-
-    # y ∈ R^k → tangent (n×d complex)
-    def decode(self, y: Float64Array) -> Complex128Array:
-        assert y.ndim == 1 and y.shape[0] == self.k
-        m = self.m
-        c = y[:m] + 1j * y[m:]
-        U: Complex128Array = np.empty((self.n, self.d), dtype=np.complex128)
-        off = 0
-        for i in range(self.n):
-            w = c[off : off + (self.d - 1)]
-            U[i, :] = self.Q_blocks[i] @ w
-            off += self.d - 1
-        # safety: enforce tangency against the *current* frame
-        U = PRODUCT_CP.project(self.X, U)
-        return U
-
-    # transport coord vector y from X to Y
-    @staticmethod
-    def transport_coords(y: Float64Array, X: Frame, Y: Frame) -> Float64Array:
-        codec_X = _CoordCodec(X)
-        U = codec_X.decode(y)
-        V = PRODUCT_CP.transport(X, Y, U)
-        codec_Y = _CoordCodec(Y)
-        y_new = codec_Y.encode(V)
-        return y_new
-
-    # transport matrix of basis vectors (k×k), column-wise
-    @staticmethod
-    def transport_basis(B: Float64Array, X: Frame, Y: Frame) -> Float64Array:
-        cols = [_CoordCodec.transport_coords(B[:, j], X, Y) for j in range(B.shape[1])]
-        B_new = np.stack(cols, axis=1)
-        B_new, _ = np.linalg.qr(B_new)
-        B_new = B_new.astype(np.float64)
-        return B_new
+    return exp(a)
 
 
 # ----------------------------- RCMA core ------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class RiemannianCMAConfig:
     """
     Configuration parameters for Riemannian CMA-ES.
@@ -146,41 +44,20 @@ class RiemannianCMAConfig:
             solutions per generation.
         parents (int): Number of parents (μ) used for recombination.
         sigma0 (float): Initial global step-size (standard deviation).
-        c_sigma (float): Learning rate for step-size control.
-        d_sigma (float): Damping parameter for step-size update.
-        c_c (float): Cumulation parameter for rank-1 update path.
-        c1 (float): Learning rate for rank-1 covariance update.
-        c_mu (float): Learning rate for rank-μ covariance update.
-        use_active (bool): Whether to use active CMA with negative weights.
         seed (int): Random seed for reproducibility.
         jitter (float): Small regularization term to ensure numerical stability.
         transport_eigs (bool): Whether to transport eigenvectors to new mean frame.
-        auto_hyper (bool): If True, set CMA learning rates
-            (c_sigma, d_sigma, c_c, c1, c_mu) from dimension-dependent defaults at init.
-        active_warmup (int): Generations to wait before enabling active CMA.
     """
 
     popsize: int = 32  # λ
     parents: int = 16  # μ
     sigma0: float = 0.5
-
-    c_sigma: float = 0.3
-    d_sigma: float = 1.0
-
-    c_c: float = 0.2  # cumulation for rank-1 path
-    c1: float = 2e-2  # learning rate rank-1
-    c_mu: float = 3e-2  # learning rate rank-μ
-
-    use_active: bool = False  # negative weights (active CMA)
     seed: int = 0
     jitter: float = 1e-12
-
     transport_eigs: bool = True  # transport eigenvectors to new mean
-    auto_hyper: bool = True
-    active_warmup: int = 1000  # generations to wait before enabling active CMA
 
 
-@dataclass
+@dataclass(slots=True)
 class _State:
     X: Frame
     sigma: float
@@ -190,6 +67,11 @@ class _State:
     p_c: np.ndarray  # (k,)
     weights: np.ndarray  # (λ,)
     mu_eff: float
+    c_sigma: float
+    d_sigma: float
+    c_c: float
+    c1: float
+    c_mu: float
 
 
 class RiemannianCMA:
@@ -229,107 +111,114 @@ class RiemannianCMA:
         energy_kwargs: dict[str, Any] | None = None,
     ):
         if popsize is None:
-            popsize = 32
+            dim = max(1, 2 * n * (d - 1))
+            popsize = 4 + int(3 * np.log(dim))
+
         if seed is None:
             seed = 0
-        self.cfg = RiemannianCMAConfig(popsize=popsize, sigma0=sigma0, seed=seed)
+
+        parents = max(1, popsize // 2)
+        self.cfg = RiemannianCMAConfig(
+            popsize=popsize, parents=parents, sigma0=sigma0, seed=seed
+        )
         self.rng = np.random.default_rng(seed)
 
-        if start_frame is None:
-            # generate default start frame as orthonormal rows (n x d)
-            # random complex vectors normalized to 1
-            vectors = self.rng.normal(size=(n, d)) + 1j * self.rng.normal(size=(n, d))
-            vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
-            start_frame = Frame(vectors)
-        else:
+        if start_frame is not None:
             if start_frame.shape != (n, d):
                 raise ValueError(
-                    f"start_frame shape {start_frame.shape} does not match "
-                    f"(n,d)=({n},{d})"
+                    "start_frame dimensions mismatch: "
+                    f"expected ({n},{d}), got ({start_frame.shape})"
                 )
+            start_frame = start_frame.copy()
+        else:
+            start_frame = Frame.random(n, d, rng=self.rng)
+
         self.energy_fn = partial(energy_fn, **(energy_kwargs or {}))
         self.state = self._init_state(start_frame)
         self._E_norm = _chi_mean(self.k)
         self._last_steps: list[np.ndarray] = []
         self._iter: int = 0
 
-    # dimension helpers
     @property
     def k(self) -> int:
         n, d = self.state.X.shape
+
         return 2 * n * (d - 1)
 
     @staticmethod
-    def _weights(lam: int, mu: int, use_active: bool) -> tuple[np.ndarray, float]:
+    def _weights(lam: int, mu: int) -> tuple[np.ndarray, float, np.ndarray]:
         # Ensure 1 ≤ mu ≤ lam to avoid negative padding or empty weights
         mu = int(min(max(1, mu), lam))
 
-        idx = np.arange(1, mu + 1)
-        w_pos = np.log(mu + 0.5) - np.log(idx)
-        w_pos = w_pos / np.sum(w_pos)
+        # Base ranking weights for all ranks 1..λ (Hansen-style)
+        idx = np.arange(1, lam + 1)
+        base = np.log((lam + 1.0) / 2.0) - np.log(idx)
+
+        # Split and normalize
+        w_pos_raw = base[:mu]
+        w_pos = w_pos_raw / np.sum(w_pos_raw)
         mu_eff = 1.0 / np.sum(w_pos**2)
 
-        if use_active and lam > mu:
-            idx_neg = np.arange(mu + 1, lam + 1)
-            w_neg = np.log(mu + 0.5) - np.log(idx_neg)
-            denom = np.sum(np.abs(w_neg))
-            if denom <= 0:
-                w_neg = np.ones_like(w_neg)
-                denom = float(w_neg.size)
-            w_neg = w_neg / denom
-            w = np.concatenate([w_pos, -0.5 * w_neg])
+        w_neg_raw = base[mu:]
+        if w_neg_raw.size > 0:
+            w_neg_abs = np.abs(w_neg_raw)
+            w_neg_abs = w_neg_abs / np.sum(w_neg_abs)  # ℓ1-normalized positives
         else:
-            # Pad with zeros to length λ if no active part is used
-            pad = lam - mu
-            if pad > 0:
-                w = np.concatenate([w_pos, np.zeros(pad)])
-            else:
-                w = w_pos
+            w_neg_abs = np.zeros(0, dtype=float)
 
-        return w.astype(float), float(mu_eff)
+        return w_pos.astype(float), float(mu_eff), w_neg_abs.astype(float)
 
     def _init_state(self, X0: Frame) -> _State:
         n, d = X0.shape
         k = 2 * n * (d - 1)
         lam = self.cfg.popsize
         mu = self.cfg.parents
-        weights, mu_eff = self._weights(lam, mu, self.cfg.use_active)
+
+        # Stage 1: base weights (positives + unscaled negative template) to get mu_eff
+        w_pos, mu_eff, w_neg_abs = self._weights(lam, mu)
+
+        # --- dimension-dependent CMA defaults (Julia-aligned, always automatic) ---
+        n_dim = float(k)
+        mu_eff_ = float(mu_eff)
+
+        # step-size parameters
+        c_sigma = (mu_eff_ + 2.0) / (n_dim + mu_eff_ + 5.0)
+        d_sigma = (
+            1.0
+            + c_sigma
+            + 2.0 * max(0.0, np.sqrt((mu_eff_ - 1.0) / (n_dim + 1.0)) - 1.0)
+        )
+
+        # covariance path parameter
+        c_c = (4.0 + mu_eff_ / n_dim) / (n_dim + 4.0 + 2.0 * mu_eff_ / n_dim)
+
+        # rank-1 and rank-mu learning rates (Julia-aligned)
+        c1 = 2.0 / (((n_dim + 1.3) ** 2) + mu_eff_)
+        alpha_mu = 2.0
+        num = 0.25 + mu_eff_ + 1.0 / mu_eff_ - 2.0
+        den = ((n_dim + 2.0) ** 2) + alpha_mu * mu_eff_ / 2.0
+        c_mu = min(1.0 - c1, alpha_mu * num / den)
+
+        # Stage 2: always-on active CMA — scale negatives per Hansen/Julia safeguards
+        kdim = k
+        if w_neg_abs.size > 0:
+            # negative scaling candidates
+            s1 = 1.0 + c1 / max(c_mu, 1e-16)
+            s2 = 1.0 + 2.0 * mu_eff / (kdim + 2.0)
+            s3 = max(
+                0.0,
+                (1.0 - c1 - c_mu) / max(kdim * c_mu, 1e-16),
+            )
+            scale_neg = -min(s1, s2, s3)
+            weights = np.concatenate([w_pos, scale_neg * w_neg_abs])
+        else:
+            weights = w_pos
+
         B = np.eye(k)
         D = np.ones(k)
         p_sigma = np.zeros(k)
         p_c = np.zeros(k)
-        # --- dimension-dependent CMA defaults (Hansen) ---
-        if self.cfg.auto_hyper:
-            n_dim = float(k)
-            mu_eff_ = float(mu_eff)
 
-            # step-size parameters
-            c_sigma = (mu_eff_ + 2.0) / (n_dim + mu_eff_ + 5.0)
-            d_sigma = (
-                1.0
-                + c_sigma
-                + 2.0 * max(0.0, np.sqrt((mu_eff_ - 1.0) / (n_dim + 1.0)) - 1.0)
-            )
-
-            # covariance path parameter
-            c_c = (4.0 + mu_eff_ / n_dim) / (n_dim + 4.0 + 2.0 * mu_eff_ / n_dim)
-
-            # rank-1 and rank-mu learning rates
-            c1 = 2.0 / (((n_dim + 1.3) ** 2) + mu_eff_)
-            alpha_mu = 2.0
-            c_mu = min(
-                1.0 - c1,
-                alpha_mu
-                * (mu_eff_ - 2.0 + 1.0 / mu_eff_)
-                / (((n_dim + 2.0) ** 2) + alpha_mu * mu_eff_ / 2.0),
-            )
-
-            # commit back to cfg
-            self.cfg.c_sigma = float(c_sigma)
-            self.cfg.d_sigma = float(d_sigma)
-            self.cfg.c_c = float(c_c)
-            self.cfg.c1 = float(c1)
-            self.cfg.c_mu = float(c_mu)
         return _State(
             X=X0,
             sigma=self.cfg.sigma0,
@@ -339,6 +228,11 @@ class RiemannianCMA:
             p_c=p_c,
             weights=weights,
             mu_eff=mu_eff,
+            c_sigma=float(c_sigma),
+            d_sigma=float(d_sigma),
+            c_c=float(c_c),
+            c1=float(c1),
+            c_mu=float(c_mu),
         )
 
     # --------------------------- ask / tell ---------------------------------
@@ -357,11 +251,11 @@ class RiemannianCMA:
         k = self.k
         z = self.rng.standard_normal((k, lam))
         y = st.B @ (st.D[:, None] * z)  # k×λ
-        codec = _CoordCodec(st.X)
+        chart = Chart.at(st.X)
         cands: list[Frame] = []
         self._last_steps = []
         for i in range(lam):
-            U = codec.decode(y[:, i])
+            U = chart.decode(y[:, i])
             Xi = PRODUCT_CP.retract(st.X, st.sigma * U)
             cands.append(Xi)
             self._last_steps.append(y[:, i].copy())
@@ -394,7 +288,7 @@ class RiemannianCMA:
         # Step-size path (whitened, old chart)
         By = st.B.T @ y_bar
         y_white = st.B @ (By / np.maximum(st.D, cfg.jitter))  # ~ N(0,I)
-        cσ, dσ = cfg.c_sigma, cfg.d_sigma
+        cσ, dσ = st.c_sigma, st.d_sigma
         p_sigma_old = (1.0 - cσ) * st.p_sigma + np.sqrt(
             cσ * (2.0 - cσ) * st.mu_eff
         ) * y_white
@@ -402,15 +296,33 @@ class RiemannianCMA:
             (cσ / dσ) * (np.linalg.norm(p_sigma_old) / self._E_norm - 1.0)
         )
 
+        # h_sigma gate (Hansen criterion)
+        kdim = self.k
+        chi = self._E_norm
+        # denominator guard to avoid tiny values at early iters
+        denom = max(1e-12, np.sqrt(1.0 - (1.0 - cσ) ** (2 * self._iter)))
+        hsig = (
+            1.0
+            if (
+                np.linalg.norm(p_sigma_old) / (chi * denom) < (1.4 + 2.0 / (kdim + 1.0))
+            )
+            else 0.0
+        )
+
         # Covariance path (old chart)
-        cc = cfg.c_c
-        p_c_old = (1.0 - cc) * st.p_c + np.sqrt(cc * (2.0 - cc) * st.mu_eff) * y_bar
+        cc = st.c_c
+        p_c_old = (1.0 - cc) * st.p_c + hsig * np.sqrt(
+            cc * (2.0 - cc) * st.mu_eff
+        ) * y_bar
 
         # Covariance update (old chart)
-        k = self.k
         C_old = st.B @ np.diag(st.D**2) @ st.B.T
-        c1, cμ = cfg.c1, cfg.c_mu
-        C_old *= 1.0 - c1 - cμ
+        c1, cμ = st.c1, st.c_mu
+        # Base scaling includes delta_hσ and the (positive+negative) weight sum
+        W = st.weights[:lam]
+        sum_w = float(np.sum(W))
+        delta_h = (1.0 - hsig) * cc * (2.0 - cc)
+        C_old *= 1.0 + c1 * delta_h - c1 - cμ * sum_w
         C_old += c1 * np.outer(p_c_old, p_c_old)
 
         # Positive weights
@@ -418,55 +330,32 @@ class RiemannianCMA:
             yj = Y_sel[:, j]
             C_old += cμ * w_pos[j] * np.outer(yj, yj)
 
-        # Active (negative) weights — PSD-safe scaling with warmup gating
-        use_active_now = (
-            cfg.use_active and (self._iter >= cfg.active_warmup) and (lam > mu)
-        )
-        if use_active_now:
+        # Active (negative) weights — PSD-safe scaling (always on)
+        if lam > mu:
             neg_idx = order[mu:]
             Y_neg = np.stack([self._last_steps[i] for i in neg_idx], axis=1)  # k×(λ-μ)
             w_neg = W[mu:]
-            Yw = st.B.T @ Y_neg
-            Yw = Yw / np.maximum(st.D[:, None], cfg.jitter)
-            scales = 1.0 / np.maximum(np.sum(Yw**2, axis=0), cfg.jitter)
-            for j in range(Y_neg.shape[1]):
-                C_old += cμ * w_neg[j] * scales[j] * np.outer(Y_neg[:, j], Y_neg[:, j])
+            if Y_neg.size > 0:
+                # Whitened scaling to bound downdates and keep C PSD
+                Yw = st.B.T @ Y_neg
+                Yw = Yw / np.maximum(st.D[:, None], cfg.jitter)
+                scales = kdim / np.maximum(np.sum(Yw**2, axis=0), cfg.jitter)
+                for j in range(Y_neg.shape[1]):
+                    C_old += (
+                        cμ * w_neg[j] * scales[j] * np.outer(Y_neg[:, j], Y_neg[:, j])
+                    )
 
         # --- move the mean and build the new chart -------------------------
-        codec_X = _CoordCodec(st.X)
-        U_bar = codec_X.decode(y_bar)
+        chart_X = Chart.at(st.X)
+        U_bar = chart_X.decode(y_bar)
         X_new = PRODUCT_CP.retract(st.X, st.sigma * U_bar)
-        codec_Y = _CoordCodec(X_new)
+        chart_Y = Chart.at(X_new)
 
-        # --- build T (old -> new) via (d-1) parallel transports ------------
-        n, d = st.X.shape
-        m = n * (d - 1)
-        k = 2 * m
-        Qx = codec_X.Q_blocks
-        Qy = codec_Y.Q_blocks
-
-        V_cols: list[np.ndarray] = []
-        for j in range(d - 1):
-            Uj = np.empty((n, d), dtype=np.complex128)
-            for i in range(n):
-                Uj[i, :] = Qx[i][:, j]
-            Vj = PRODUCT_CP.transport(st.X, X_new, Uj)  # (n, d)
-            V_cols.append(Vj)
-
-        blocks_real: list[np.ndarray] = []
-        for i in range(n):
-            Mi = np.stack([V_cols[j][i, :] for j in range(d - 1)], axis=1)  # (d, d-1)
-            Ti_c = np.conj(Qy[i]).T @ Mi  # (d-1, d-1) complex
-            Re, Im = Ti_c.real, Ti_c.imag
-            Ti_real = np.block([[Re, -Im], [Im, Re]])  # 2(d-1) x 2(d-1)
-            blocks_real.append(Ti_real)
-
-        T = np.zeros((k, k), dtype=np.float64)
-        off = 0
-        r = 2 * (d - 1)
-        for i in range(n):
-            T[off : off + r, off : off + r] = blocks_real[i]
-            off += r
+        # Build T (old → new) by transporting the standard basis in coordinates
+        k = self.k
+        Id = np.eye(k, dtype=np.float64)
+        T_cols = [chart_X.transport_coords(chart_Y, Id[:, j]) for j in range(k)]
+        T = np.column_stack(T_cols)
 
         # --- push covariance and paths into the NEW chart ------------------
         C = T @ C_old @ T.T
@@ -489,6 +378,11 @@ class RiemannianCMA:
             p_c=p_c_new,
             weights=st.weights,
             mu_eff=st.mu_eff,
+            c_sigma=st.c_sigma,
+            d_sigma=st.d_sigma,
+            c_c=st.c_c,
+            c1=st.c1,
+            c_mu=st.c_mu,
         )
         self._last_steps = []
 
