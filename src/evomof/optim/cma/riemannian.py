@@ -143,8 +143,17 @@ class RiemannianCMA:
     @property
     def k(self) -> int:
         n, d = self.state.X.shape
-
         return 2 * n * (d - 1)
+
+    @property
+    def mean(self) -> Frame:
+        """Current mean :class:`Frame`."""
+        return self.state.X
+
+    @property
+    def sigma(self) -> float:
+        """Current global step‑size σ."""
+        return self.state.sigma
 
     @staticmethod
     def _weights(lam: int, mu: int) -> tuple[np.ndarray, float, np.ndarray]:
