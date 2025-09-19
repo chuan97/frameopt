@@ -142,7 +142,9 @@ class RiemannianCMA:
 
     @property
     def k(self) -> int:
+        """Intrinsic dimension of the search space (tangent space at mean)."""
         n, d = self.state.X.shape
+
         return 2 * n * (d - 1)
 
     @property

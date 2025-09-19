@@ -93,6 +93,20 @@ class ProjectionCMA:
             cma_opts,
         )
 
+    @property
+    def sigma(self) -> float:
+        """
+        Current step-size (σ) of the underlying CMA-ES optimizer.
+        """
+        return float(self._es.sigma)
+
+    @property
+    def mean(self) -> np.ndarray:
+        """Current mean vector of the CMA-ES search distribution."""
+        arr: np.ndarray = np.asarray(self._es.mean)  # typed boundary: normalize type
+
+        return arr
+
     def step(self) -> tuple[Frame, float]:
         """
         Execute **one generation** of projection‑CMA‑ES.
@@ -207,21 +221,3 @@ class ProjectionCMA:
             print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
 
         return best_frame
-
-    @property
-    def sigma(self) -> float:
-        """
-        Get the current step-size (σ) of the underlying CMA-ES optimizer.
-
-        Returns
-        -------
-        float
-            The current CMA-ES step-size (sigma).
-        """
-        return float(self._es.sigma)
-
-    @property
-    def mean(self) -> np.ndarray:
-        """Current mean vector of the CMA-ES search distribution."""
-        arr: np.ndarray = np.asarray(self._es.mean)  # typed boundary: normalize type
-        return arr
