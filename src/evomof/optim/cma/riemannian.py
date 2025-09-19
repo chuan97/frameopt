@@ -149,7 +149,7 @@ class RiemannianCMA:
     @staticmethod
     def _weights(lam: int, mu: int) -> tuple[np.ndarray, float, np.ndarray]:
         # Ensure 1 ≤ mu ≤ lam to avoid negative padding or empty weights
-        mu = int(min(max(1, mu), lam))
+        mu = min(max(1, mu), lam)
 
         # Base ranking weights for all ranks 1..λ (Hansen-style)
         idx = np.arange(1, lam + 1)
@@ -250,16 +250,21 @@ class RiemannianCMA:
         st = self.state
         lam = self.cfg.popsize
         k = self.k
+
         z = self.rng.standard_normal((k, lam))
         y = st.B @ (st.D[:, None] * z)  # k×λ
+
         chart = Chart.at(st.X)
+
         cands: list[Frame] = []
         self._last_steps = []
         for i in range(lam):
             U = chart.decode(y[:, i])
             Xi = PRODUCT_CP.retract(st.X, st.sigma * U)
+
             cands.append(Xi)
             self._last_steps.append(y[:, i].copy())
+
         return cands
 
     def tell(self, candidates: list[Frame], energies: np.ndarray) -> None:
@@ -404,11 +409,10 @@ class RiemannianCMA:
         """
         cands = self.ask()
         energies = np.array([self.energy_fn(Xi) for Xi in cands], dtype=float)
-        i_min = int(np.argmin(energies))
-        best_X = cands[i_min]
-        best_energy = energies[i_min]
+        best_idx = np.argmin(energies)
         self.tell(cands, energies)
-        return best_X, best_energy
+
+        return cands[best_idx], energies[best_idx]
 
     def run(
         self,
@@ -434,6 +438,7 @@ class RiemannianCMA:
         """
         if max_gen < 0:
             raise ValueError(f"max_gen must be non-negative, got {max_gen}")
+
         t0 = time.time()
         # Initialize best_frame randomly to handle max_gen=0 cleanly
         n, d = self.state.X.shape
@@ -443,15 +448,22 @@ class RiemannianCMA:
 
         for g in range(1, max_gen + 1):
             cand, E = self.step()
+
             if E < best_E:
                 best_frame, best_E = cand.copy(), float(E)
+
             if log_every and g % log_every == 0:
                 print(f"gen {g:4d}   energy {E:12.6e}   best {best_E:12.6e}")
+
             # convergence check on generation‑best energy
             if tol > 0 and prev_E is not None and abs(prev_E - float(E)) < tol:
                 if log_every:
                     print(f"Converged (|ΔE| < {tol}) at generation {g}")
+
                 break
+
             prev_E = float(E)
+
         print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
+
         return best_frame
