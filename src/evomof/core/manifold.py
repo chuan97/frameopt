@@ -5,7 +5,7 @@ from typing import Literal
 
 import numpy as np
 
-from evomof.core._types import Complex128Array
+from evomof.core._types import Complex128Array, Float64Array
 from evomof.core.frame import Frame
 
 
@@ -299,3 +299,182 @@ class ProductCP:
 
 # Default policy instance for general use
 PRODUCT_CP = ProductCP()
+
+
+@dataclass(frozen=True, slots=True)
+class Chart:
+    """
+    Orthonormal coordinate chart on (CP^{d−1})^n anchored at a base :class:`Frame`.
+
+    Provides real coordinates of tangent vectors (encode/decode) and transports
+    them between base points using the selected geometry policy.
+
+    Notes
+    -----
+    * Real coordinate dimension is ``k = 2·n·(d−1)``.
+    * Each row uses an orthonormal basis \(Q_i ∈ ℂ^{d×(d−1)}\) spanning the
+      complex orthogonal complement of the frame row. Columns are phase‑stabilized
+      so the largest‑magnitude entry per column is real and ≥ 0 (to reduce gauge flips).
+    """
+
+    frame: Frame
+    Q_blocks: tuple[np.ndarray, ...]
+    geom: ProductCP = PRODUCT_CP
+
+    # ---------- factory ----------
+    @classmethod
+    def at(cls, frame: Frame, *, geom: ProductCP | None = None) -> Chart:
+        """Build a chart anchored at ``frame`` with cached per‑row bases."""
+        f = frame.vectors
+        n, d = f.shape
+
+        if d < 2:
+            raise ValueError("Chart requires d ≥ 2 (tangent must be nontrivial).")
+
+        Q_blocks = tuple(cls._orth_basis_row(f[i]) for i in range(n))
+
+        g = PRODUCT_CP if geom is None else geom
+
+        return cls(frame=frame, Q_blocks=tuple(Q_blocks), geom=g)
+
+    # ---------- public API ----------
+    def dim(self) -> int:
+        """Return real tangent dimension ``k = 2·n·(d−1)``."""
+        n, d = self.frame.vectors.shape
+        dim: int = 2 * n * (d - 1)
+
+        return dim
+
+    def encode(self, U: Complex128Array) -> Float64Array:
+        """
+        Encode a CP‑tangent ``U`` at ``self.frame`` into real coordinates ``y``.
+
+        Parameters
+        ----------
+        U : Complex128Array
+            Tangent at ``self.frame`` with shape ``(n, d)``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Real vector of length ``k = 2·n·(d−1)``.
+        """
+        f = self.frame.vectors
+
+        if U.shape != f.shape:
+            raise ValueError("Tangent array shape mismatch.")
+
+        n, d = f.shape
+        r = d - 1
+        Y = np.empty((n, 2 * r), dtype=np.float64)
+        for i in range(n):
+            Qi = self.Q_blocks[i]
+            c = Qi.conj().T @ U[i]
+            Y[i, :r] = np.real(c)
+            Y[i, r:] = np.imag(c)
+        return Y.ravel()
+
+    def decode(self, y: Float64Array) -> Complex128Array:
+        """
+        Decode real coordinates ``y`` into a CP‑tangent at ``self.frame``.
+
+        Parameters
+        ----------
+        y : numpy.ndarray
+            Real vector of length ``k = 2·n·(d−1)``.
+
+        Returns
+        -------
+        Complex128Array
+            Tangent at ``self.frame`` (shape ``(n, d)``).
+        """
+        f = self.frame.vectors
+        n, d = f.shape
+        r = d - 1
+        expected = 2 * n * r
+        if y.ndim != 1 or y.size != expected:
+            raise ValueError(
+                f"Coordinate length mismatch: got {y.size}, expected {expected}."
+            )
+        Y = y.reshape(n, 2 * r)
+        U = np.empty_like(f)
+        for i in range(n):
+            Qi = self.Q_blocks[i]
+            cre = Y[i, :r]
+            cim = Y[i, r:]
+            c = cre + 1j * cim
+            U[i] = Qi @ c
+        # Kill numerical drift along the base vector
+        return self.geom.project(self.frame, U)
+
+    def transport_coords(self, to: Chart, y: Float64Array) -> Float64Array:
+        """Transport coordinates ``y`` from this chart to chart ``to``."""
+        U = self.decode(y)
+        V = self.geom.transport(self.frame, to.frame, U)
+        return to.encode(V)
+
+    def transport_basis(self, to: Chart, B: Float64Array) -> Float64Array:
+        """
+        Transport a set of coordinate directions (columns of ``B``) and
+        re‑orthonormalize with a real QR.
+
+        Parameters
+        ----------
+        to : Chart
+            Target chart.
+        B : numpy.ndarray
+            Real matrix of shape ``(k, r)`` with coordinate directions.
+
+        Returns
+        -------
+        numpy.ndarray
+            Real matrix of shape ``(k, r)`` with orthonormal columns (Euclidean).
+        """
+        if B.ndim != 2 or B.shape[0] != self.dim():
+            raise ValueError("Basis shape mismatch with chart dimension.")
+        k, r = B.shape
+        if r == 0:
+            return B.copy()
+        cols = []
+        for j in range(r):
+            cols.append(self.transport_coords(to, B[:, j]))
+        M = np.column_stack(cols)
+        Q, _ = np.linalg.qr(M, mode="reduced")
+        return Q
+
+    # ---------- helpers ----------
+    @staticmethod
+    def _orth_basis_row(f: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+        """
+        Orthonormal basis of the complex orthogonal complement of ``f``.
+
+        Returns ``Q ∈ ℂ^{d×(d−1)}`` with columns spanning ``{u : ⟨f, u⟩ = 0}``.
+        Columns are phase‑stabilized by aligning the entry at the frame pivot index `p`
+        (largest entry of `f`) to be real and ≥ 0.
+        """
+        d = f.size
+
+        # Choose pivot with largest magnitude for stability
+        p = np.argmax(np.abs(f))
+
+        # Build Ep = I without the pivot column
+        Ep = np.eye(d, dtype=np.complex128)
+        Ep = np.delete(Ep, p, axis=1)  # d×(d−1)
+
+        # Project onto orthogonal complement of f
+        inner = f.conj() @ Ep  # (d−1,)
+        Qtilde = Ep - np.outer(f, inner)
+
+        # Orthonormalize
+        Q, _ = np.linalg.qr(Qtilde, mode="reduced")  # d×(d−1)
+
+        # Column phase stabilization: align at the frame pivot `p` only.
+        for j in range(Q.shape[1]):
+            col = Q[:, j]
+            mag_p = np.abs(col[p])
+            if mag_p > eps:
+                phase = col[p] / mag_p  # unit complex
+                Q[:, j] = col / phase
+            # else: leave column as is for simplicity
+
+        return Q
