@@ -115,7 +115,8 @@ class RiemannianCMA:
             popsize = 4 + int(3 * np.log(dim))
 
         if seed is None:
-            seed = 0
+            # Draw a fresh 32‑bit seed from OS entropy for reproducibility when logged
+            seed = int(np.random.SeedSequence().generate_state(1)[0])
 
         parents = max(1, popsize // 2)
         self.cfg = RiemannianCMAConfig(
@@ -412,7 +413,7 @@ class RiemannianCMA:
     def run(
         self,
         max_gen: int = 200,
-        tol: float = 1e-20,
+        tol: float = 1e-12,
         log_every: int = 10,
     ) -> Frame:
         """
