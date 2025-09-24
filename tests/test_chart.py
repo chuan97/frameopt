@@ -85,6 +85,47 @@ def test_transport_preserves_norm_small_step():
     )
 
 
+def test_transport_basis_shapes_and_orthonormality():
+    rng = np.random.default_rng(6)
+    f = Frame.random(n=2, d=6, rng=rng)
+    X = Chart.at(f)
+
+    # Move to a nearby chart
+    eta = PRODUCT_CP.random_tangent(f, rng=rng, unit=True)
+    Yf = PRODUCT_CP.retract(f, 5e-4 * eta)
+    Y = Chart.at(Yf)
+
+    k = X.dim()
+    r = min(4, max(1, k // 4))
+
+    # Random orthonormal basis in coords at X
+    M = rng.standard_normal((k, r))
+    Qx, _ = np.linalg.qr(M, mode="reduced")
+
+    Qy = X.transport_basis(Y, Qx)
+
+    # Orthonormal columns at Y
+    G = Qy.T @ Qy
+    np.testing.assert_allclose(G, np.eye(r), atol=1e-12)
+
+    # Shape preserved
+    assert Qy.shape == (k, r)
+
+
+def test_transport_basis_zero_rank_returns_copy():
+    rng = np.random.default_rng(7)
+    f = Frame.random(n=3, d=4, rng=rng)
+    X = Chart.at(f)
+    Y = Chart.at(PRODUCT_CP.retract(f, 1e-3 * PRODUCT_CP.random_tangent(f, rng=rng)))
+
+    k = X.dim()
+    B = np.empty((k, 0), dtype=np.float64)
+    By = X.transport_basis(Y, B)
+
+    assert By.shape == B.shape
+    assert not np.may_share_memory(By, B)
+
+
 def test_chart_at_raises_for_d_lt_2():
     rng = np.random.default_rng(8)
     f = Frame.random(n=3, d=1, rng=rng)
