@@ -1,3 +1,11 @@
+"""
+CMA-ES optimizer with Riemannian manifold support.
+
+Adaptation of Manopt.jl implementation of Riemannian CMA-ES
+
+Reference: [Hansen 2023] N. Hansen, The CMA Evolution Strategy: A Tutorial, arXiv:1604.00772 (2023)
+"""
+
 from __future__ import annotations
 
 import math
@@ -107,7 +115,7 @@ class RiemannianCMA:
     ):
         if popsize is None:
             dim = max(1, 2 * n * (d - 1))
-            popsize = 4 + int(3 * np.log(dim))
+            popsize = 4 + int(3 * np.log(dim))  # Eq. (48) Hansen 2023
 
         if seed is None:
             # Draw a fresh 32‑bit seed from OS entropy for reproducibility when logged
@@ -152,74 +160,44 @@ class RiemannianCMA:
         """Current global step‑size σ."""
         return self.state.sigma
 
-    @staticmethod
-    def _weights(lam: int, mu: int) -> tuple[np.ndarray, float, np.ndarray]:
-        # Ensure 1 ≤ mu ≤ lam to avoid negative padding or empty weights
-        mu = min(max(1, mu), lam)
-
-        # Base ranking weights for all ranks 1..λ (Hansen-style)
-        idx = np.arange(1, lam + 1)
-        base = np.log((lam + 1.0) / 2.0) - np.log(idx)
-
-        # Split and normalize
-        w_pos_raw = base[:mu]
-        w_pos = w_pos_raw / np.sum(w_pos_raw)
-        mu_eff = 1.0 / np.sum(w_pos**2)
-
-        w_neg_raw = base[mu:]
-        if w_neg_raw.size > 0:
-            w_neg_abs = np.abs(w_neg_raw)
-            w_neg_abs = w_neg_abs / np.sum(w_neg_abs)  # ℓ1-normalized positives
-        else:
-            w_neg_abs = np.zeros(0, dtype=float)
-
-        return w_pos.astype(float), float(mu_eff), w_neg_abs.astype(float)
-
     def _init_state(self, X0: Frame) -> _State:
         n, d = X0.shape
         k = 2 * n * (d - 1)
         lam = self.cfg.popsize
         mu = self.cfg.parents
 
-        # base weights
-        w_pos, mu_eff, w_neg_abs = self._weights(lam, mu)
+        # selection and recombination
+        idx = np.arange(1, lam + 1)
+        base = np.log((lam + 1.0) / 2.0) - np.log(idx)  # Eq. (49) Hansen 2023
+        w_pos = base[:mu]
+        w_neg = base[mu:]
+        mu_eff = np.sum(w_pos) ** 2 / np.sum(w_pos**2)
+        mu_eff_neg = np.sum(w_neg) ** 2 / np.sum(w_neg**2)
+        w_pos = w_pos / np.sum(w_pos)  # Top term Eq. (53) Hansen 2023
 
-        # dimension-dependent CMA defaults
-        n_dim = float(k)
-        mu_eff_ = float(mu_eff)
+        c_m = 1.0  # Eq. (54) Hansen 2023
 
-        # step-size parameters
-        c_sigma = (mu_eff_ + 2.0) / (n_dim + mu_eff_ + 5.0)
+        # step-size control
+        c_sigma = (mu_eff + 2.0) / (k + mu_eff + 5.0)  # Eq. (55) Hansen 2023
         d_sigma = (
-            1.0
-            + c_sigma
-            + 2.0 * max(0.0, np.sqrt((mu_eff_ - 1.0) / (n_dim + 1.0)) - 1.0)
-        )
+            1.0 + c_sigma + 2.0 * max(0.0, np.sqrt((mu_eff - 1.0) / (k + 1.0)) - 1.0)
+        )  # Eq. (55) Hansen 2023
 
-        # covariance path parameter
-        c_c = (4.0 + mu_eff_ / n_dim) / (n_dim + 4.0 + 2.0 * mu_eff_ / n_dim)
+        # covariance matrix adaptation
+        c_c = (4.0 + mu_eff / k) / (k + 4.0 + 2.0 * mu_eff / k)  # Eq. (56) Hansen 2023
+        c1 = 2.0 / (((k + 1.3) ** 2) + mu_eff)  # Eq. (57) Hansen 2023
+        num = 0.25 + mu_eff + 1.0 / mu_eff - 2.0
+        den = (k + 2.0) ** 2 + 2.0 * mu_eff / 2.0
+        c_mu = min(1.0 - c1, 2.0 * num / den)  # Eq. (58) Hansen 2023
 
-        # rank-1 and rank-mu learning rates
-        c1 = 2.0 / (((n_dim + 1.3) ** 2) + mu_eff_)
-        alpha_mu = 2.0
-        num = 0.25 + mu_eff_ + 1.0 / mu_eff_ - 2.0
-        den = ((n_dim + 2.0) ** 2) + alpha_mu * mu_eff_ / 2.0
-        c_mu = min(1.0 - c1, alpha_mu * num / den)
-        c_m = 1.0  # mean learning-rate (Julia/Hansen default)
-
-        # always-on active CMA
-        if w_neg_abs.size > 0:
-            # negative scaling candidates
-            s1 = 1.0 + c1 / max(c_mu, 1e-16)
-            s2 = 1.0 + 2.0 * mu_eff / (k + 2.0)
-            s3 = max(
-                0.0,
-                (1.0 - c1 - c_mu) / max(k * c_mu, 1e-16),
-            )
-            scale_neg = -min(s1, s2, s3)
-            weights = np.concatenate([w_pos, scale_neg * w_neg_abs])
-        else:
-            weights = w_pos
+        # finish weights (compute negative weights)
+        w_neg = w_neg / np.sum(np.abs(w_neg))
+        s1 = 1.0 + c1 / c_mu  # Eq. (50) Hansen 2023
+        s2 = 1.0 + 2.0 * mu_eff_neg / (mu_eff + 2.0)  # Eq. (51) Hansen 2023
+        s3 = (1.0 - c1 - c_mu) / (k * c_mu)  # Eq. (52) Hansen 2023
+        scale_neg = min(s1, s2, s3)
+        w_neg /= scale_neg  # Bottom term Eq. (53) Hansen 2023
+        weights = np.concatenate([w_pos, w_neg])
 
         B = np.eye(k)
         D = np.ones(k)
@@ -342,20 +320,19 @@ class RiemannianCMA:
         C_old += c1 * np.outer(p_c_old, p_c_old)  # Second term Eq. (46) Hansen 2023
         y_all = self._last_steps[:, order]
         neg_mask = w < 0.0
-        if np.any(neg_mask):
-            y_neg = y_all[:, neg_mask]
-            Yw = st.B.T @ y_neg
-            Yw = Yw / st.D[:, None]
-            scales = k / np.sum(Yw**2, axis=0)
-            w[neg_mask] *= scales
+        y_neg = y_all[:, neg_mask]
+        Yw = st.B.T @ y_neg
+        Yw = Yw / st.D[:, None]
+        scales = k / np.sum(Yw**2, axis=0)
+        w[neg_mask] *= scales
         C_old += (
             c_mu * (y_all * w[None, :]) @ y_all.T
         )  # Third term Eq. (46) Hansen 2023
 
         # transport covariance eigenbasis and paths to the new mean
-        evals, evecs = np.linalg.eigh(C_old)
-        D_new = np.sqrt(np.maximum(evals, cfg.jitter))
-        B_new = chart_X.transport_basis(chart_Y, evecs)
+        vals, vecs = np.linalg.eigh(C_old)
+        D_new = np.sqrt(np.maximum(vals, cfg.jitter))
+        B_new = chart_X.transport_basis(chart_Y, vecs)
         p_sigma_new = chart_X.transport_coords(chart_Y, p_sigma_old)
         p_c_new = chart_X.transport_coords(chart_Y, p_c_old)
 
