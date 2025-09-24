@@ -281,7 +281,7 @@ class RiemannianCMA:
         X_new = PRODUCT_CP.retract(
             st.X, st.c_m * st.sigma * U_bar
         )  # Eq. (42) Hansen 2023
-        chart_Y = Chart.at(X_new)
+        chart_Y = chart_X.transport_to(X_new)
 
         # step-size control (old chart)
         By = st.B.T @ y_bar

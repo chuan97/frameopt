@@ -444,6 +444,78 @@ class Chart:
 
         return Q
 
+    def transport_to(self, to: Frame, *, eps: float = 1e-12) -> Chart:
+        """
+        Transport this chart's per‑row complex bases to a new base point ``to``
+        and return a stabilized chart at ``to``.
+
+        This differs from :meth:`transport_basis`, which transports a **real**
+        coordinate basis in ℝᵏ. Here we transport each row's complex basis
+        \(Q_i ∈ ℂ^{d×(d−1)}\), re‑orthonormalize it, and align columns to reduce
+        gauge flips across generations.
+
+        Steps (per row):
+        1. Transport each column of the old \(Q_i\) via :meth:`ProductCP.transport`.
+        2. QR re‑orthonormalize the transported block.
+        3. Procrustes‑align the QR basis to the transported block to preserve column identity.
+        4. Phase‑stabilize columns at the **old pivot** index (largest‑magnitude entry of the old frame row).
+
+        Parameters
+        ----------
+        to : :class:`Frame`
+            Target frame (must have same shape as ``self.frame``).
+        eps : float, keyword‑only
+            Numerical threshold for phase stabilization at the pivot.
+
+        Returns
+        -------
+        :class:`Chart`
+            New chart anchored at ``to`` with stabilized per‑row bases.
+        """
+        if to.vectors.shape != self.frame.vectors.shape:
+            raise ValueError("Frame shapes mismatch in chart transport.")
+
+        X = self.frame
+        n, d = to.vectors.shape
+        r = d - 1
+        geom = self.geom
+
+        # Working array for per‑column transports
+        work = np.zeros_like(X.vectors, dtype=np.complex128)
+        Q_new: list[np.ndarray] = []
+
+        for i in range(n):
+            Qi_old = self.Q_blocks[i]  # d×r
+            cols = np.empty((d, r), dtype=np.complex128)
+
+            # Transport each column of the complex basis for this row
+            for j in range(r):
+                work.fill(0.0)
+                work[i, :] = Qi_old[:, j]
+                Vi = geom.transport(X, to, work)  # (n,d)
+                cols[:, j] = Vi[i, :]
+
+            # Orthonormalize transported columns
+            Qtemp, _ = np.linalg.qr(cols, mode="reduced")  # d×r
+
+            # Procrustes alignment to keep columns close to transported ones
+            H = Qtemp.conj().T @ cols
+            U, _, Vh = np.linalg.svd(H, full_matrices=False)
+            R = Vh.conj().T @ U.conj().T
+            Qrow = Qtemp @ R  # still orthonormal
+
+            # Phase stabilization at the old pivot (lock pivot index)
+            p = int(np.argmax(np.abs(X.vectors[i])))
+            for j in range(r):
+                mag = abs(Qrow[p, j])
+                if mag > eps:
+                    phase = Qrow[p, j] / mag
+                    Qrow[:, j] = Qrow[:, j] / phase  # make pivot entry real ≥ 0
+
+            Q_new.append(Qrow)
+
+        return Chart(frame=to, Q_blocks=tuple(Q_new), geom=geom)
+
     @staticmethod
     def _orth_basis_row(f: np.ndarray, eps: float = 1e-12) -> np.ndarray:
         """
