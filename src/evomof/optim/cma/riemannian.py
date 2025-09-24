@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from math import exp, lgamma, log
 from typing import Any
 
 import numpy as np
@@ -16,22 +16,15 @@ from evomof.core.manifold import PRODUCT_CP, Chart
 __all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
 
 
-# ----------------------------- helpers -------------------------------------
-
-
 def _chi_mean(k: int) -> float:
-    """E||N(0, I_k)|| — mean of the chi distribution with k dof (stable).
+    """E‖𝒩(0, I_k)‖ — chi mean (asymptotic approximation).
 
-    Computed via log‑gamma to avoid overflow: √2·Γ((k+1)/2)/Γ(k/2).
+    Uses the standard expansion:
+        √k · (1 − 1/(4k) + 1/(21 k²))
     """
     if k <= 0:
         return 0.0
-    a = 0.5 * log(2.0) + lgamma((k + 1.0) / 2.0) - lgamma(k / 2.0)
-
-    return exp(a)
-
-
-# ----------------------------- RCMA core ------------------------------------
+    return math.sqrt(k) * (1.0 - 1.0 / (4.0 * k) + 1.0 / (21.0 * k * k))
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +65,8 @@ class _State:
     c_c: float
     c1: float
     c_mu: float
+    c_m: float
+    chart: Chart
 
 
 class RiemannianCMA:
@@ -137,7 +132,7 @@ class RiemannianCMA:
         self.energy_fn = partial(energy_fn, **(energy_kwargs or {}))
         self.state = self._init_state(start_frame)
         self._E_norm = _chi_mean(self.k)
-        self._last_steps: list[np.ndarray] = []
+        self._last_steps: np.ndarray
         self._iter: int = 0
 
     @property
@@ -186,10 +181,10 @@ class RiemannianCMA:
         lam = self.cfg.popsize
         mu = self.cfg.parents
 
-        # Stage 1: base weights (positives + unscaled negative template) to get mu_eff
+        # base weights
         w_pos, mu_eff, w_neg_abs = self._weights(lam, mu)
 
-        # --- dimension-dependent CMA defaults (Julia-aligned, always automatic) ---
+        # dimension-dependent CMA defaults
         n_dim = float(k)
         mu_eff_ = float(mu_eff)
 
@@ -204,22 +199,22 @@ class RiemannianCMA:
         # covariance path parameter
         c_c = (4.0 + mu_eff_ / n_dim) / (n_dim + 4.0 + 2.0 * mu_eff_ / n_dim)
 
-        # rank-1 and rank-mu learning rates (Julia-aligned)
+        # rank-1 and rank-mu learning rates
         c1 = 2.0 / (((n_dim + 1.3) ** 2) + mu_eff_)
         alpha_mu = 2.0
         num = 0.25 + mu_eff_ + 1.0 / mu_eff_ - 2.0
         den = ((n_dim + 2.0) ** 2) + alpha_mu * mu_eff_ / 2.0
         c_mu = min(1.0 - c1, alpha_mu * num / den)
+        c_m = 1.0  # mean learning-rate (Julia/Hansen default)
 
-        # Stage 2: always-on active CMA — scale negatives per Hansen/Julia safeguards
-        kdim = k
+        # always-on active CMA
         if w_neg_abs.size > 0:
             # negative scaling candidates
             s1 = 1.0 + c1 / max(c_mu, 1e-16)
-            s2 = 1.0 + 2.0 * mu_eff / (kdim + 2.0)
+            s2 = 1.0 + 2.0 * mu_eff / (k + 2.0)
             s3 = max(
                 0.0,
-                (1.0 - c1 - c_mu) / max(kdim * c_mu, 1e-16),
+                (1.0 - c1 - c_mu) / max(k * c_mu, 1e-16),
             )
             scale_neg = -min(s1, s2, s3)
             weights = np.concatenate([w_pos, scale_neg * w_neg_abs])
@@ -230,6 +225,8 @@ class RiemannianCMA:
         D = np.ones(k)
         p_sigma = np.zeros(k)
         p_c = np.zeros(k)
+
+        chart0 = Chart.at(X0)
 
         return _State(
             X=X0,
@@ -245,9 +242,9 @@ class RiemannianCMA:
             c_c=float(c_c),
             c1=float(c1),
             c_mu=float(c_mu),
+            c_m=float(c_m),
+            chart=chart0,
         )
-
-    # --------------------------- ask / tell ---------------------------------
 
     def ask(self) -> list[Frame]:
         """
@@ -260,21 +257,23 @@ class RiemannianCMA:
         """
         st = self.state
         lam = self.cfg.popsize
-        k = self.k
 
-        z = self.rng.standard_normal((k, lam))
-        y = st.B @ (st.D[:, None] * z)  # k×λ
-
-        chart = Chart.at(st.X)
+        # sample new population (in old chart)
+        z = self.rng.standard_normal((self.k, lam))  # Eq. (38) Hansen 2023
+        y = st.B @ (st.D[:, None] * z)  # Eq. (39) Hansen 2023
 
         cands: list[Frame] = []
-        self._last_steps = []
         for i in range(lam):
-            U = chart.decode(y[:, i])
-            Xi = PRODUCT_CP.retract(st.X, st.sigma * U)
+            U = st.chart.decode(
+                y[:, i]
+            )  # decode each candidate difference into a tangent vector
+            Xi = PRODUCT_CP.retract(
+                st.X, st.sigma * U
+            )  # Eq. (40) Hansen 2023 (retract the tangent vector to get the candidate frames)
 
             cands.append(Xi)
-            self._last_steps.append(y[:, i].copy())
+
+        self._last_steps = y
 
         return cands
 
@@ -289,103 +288,77 @@ class RiemannianCMA:
                 each candidate.
         """
         self._iter += 1
+
         st, cfg = self.state, self.cfg
-        lam = len(candidates)
+        mu = cfg.parents
+
+        # selection and recombination (in old chart)
         order = np.argsort(energies)
-        mu = min(cfg.parents, lam)
         sel = order[:mu]
+        w_pos = st.weights[:mu]
+        y_sel = self._last_steps[:, sel]  # k×μ
+        y_bar = y_sel @ w_pos  # Eq. (41) Hansen 2023
+        chart_X = st.chart
+        U_bar = chart_X.decode(y_bar)
+        X_new = PRODUCT_CP.retract(
+            st.X, st.c_m * st.sigma * U_bar
+        )  # Eq. (42) Hansen 2023
+        chart_Y = Chart.at(X_new)
 
-        # Recombination in coords (old chart)
-        W = st.weights[:lam]
-        w_pos = W[:mu]
-        Y_sel = np.stack([self._last_steps[i] for i in sel], axis=1)  # k×μ
-        y_bar = Y_sel @ w_pos
-
-        # --- all updates in the OLD chart ---------------------------------
-        # Step-size path (whitened, old chart)
+        # step-size control (old chart)
         By = st.B.T @ y_bar
-        y_white = st.B @ (By / np.maximum(st.D, cfg.jitter))  # ~ N(0,I)
-        cσ, dσ = st.c_sigma, st.d_sigma
-        p_sigma_old = (1.0 - cσ) * st.p_sigma + np.sqrt(
-            cσ * (2.0 - cσ) * st.mu_eff
-        ) * y_white
+        y_white = st.B @ (By / st.D)  # ~ N(0,I)
+        c_sigma = st.c_sigma
+        p_sigma_old = (1.0 - c_sigma) * st.p_sigma + np.sqrt(
+            c_sigma * (2.0 - c_sigma) * st.mu_eff
+        ) * y_white  # Eq. (43) Hansen 2023
         sigma_new = st.sigma * np.exp(
-            (cσ / dσ) * (np.linalg.norm(p_sigma_old) / self._E_norm - 1.0)
-        )
+            (c_sigma / st.d_sigma) * (np.linalg.norm(p_sigma_old) / self._E_norm - 1.0)
+        )  # Eq. (44) Hansen 2023
 
-        # h_sigma gate (Hansen criterion)
-        kdim = self.k
-        chi = self._E_norm
-        # denominator guard to avoid tiny values at early iters
-        denom = max(1e-12, np.sqrt(1.0 - (1.0 - cσ) ** (2 * self._iter)))
+        # covariance matrix adaptation (old chart)
+        denom = np.sqrt(1.0 - (1.0 - c_sigma) ** (2 * self._iter))
+        k = self.k
         hsig = (
             1.0
             if (
-                np.linalg.norm(p_sigma_old) / (chi * denom) < (1.4 + 2.0 / (kdim + 1.0))
+                np.linalg.norm(p_sigma_old) / (self._E_norm * denom)
+                < (1.4 + 2.0 / (k + 1.0))
             )
             else 0.0
         )
-
-        # Covariance path (old chart)
         cc = st.c_c
         p_c_old = (1.0 - cc) * st.p_c + hsig * np.sqrt(
             cc * (2.0 - cc) * st.mu_eff
-        ) * y_bar
-
-        # Covariance update (old chart)
+        ) * y_bar  # Eq. (45) Hansen 2023
         C_old = st.B @ np.diag(st.D**2) @ st.B.T
-        c1, cμ = st.c1, st.c_mu
-        # Base scaling includes delta_hσ and the (positive+negative) weight sum
-        W = st.weights[:lam]
-        sum_w = float(np.sum(W))
+        c1, c_mu = st.c1, st.c_mu
+        w = st.weights.copy()
+        sum_w = np.sum(w)
         delta_h = (1.0 - hsig) * cc * (2.0 - cc)
-        C_old *= 1.0 + c1 * delta_h - c1 - cμ * sum_w
-        C_old += c1 * np.outer(p_c_old, p_c_old)
+        C_old *= (
+            1.0 + c1 * delta_h - c1 - c_mu * sum_w
+        )  # First term Eq. (46) Hansen 2023
+        C_old += c1 * np.outer(p_c_old, p_c_old)  # Second term Eq. (46) Hansen 2023
+        y_all = self._last_steps[:, order]
+        neg_mask = w < 0.0
+        if np.any(neg_mask):
+            y_neg = y_all[:, neg_mask]
+            Yw = st.B.T @ y_neg
+            Yw = Yw / st.D[:, None]
+            scales = k / np.sum(Yw**2, axis=0)
+            w[neg_mask] *= scales
+        C_old += (
+            c_mu * (y_all * w[None, :]) @ y_all.T
+        )  # Third term Eq. (46) Hansen 2023
 
-        # Positive weights
-        for j in range(mu):
-            yj = Y_sel[:, j]
-            C_old += cμ * w_pos[j] * np.outer(yj, yj)
+        # transport covariance eigenbasis and paths to the new mean
+        evals, evecs = np.linalg.eigh(C_old)
+        D_new = np.sqrt(np.maximum(evals, cfg.jitter))
+        B_new = chart_X.transport_basis(chart_Y, evecs)
+        p_sigma_new = chart_X.transport_coords(chart_Y, p_sigma_old)
+        p_c_new = chart_X.transport_coords(chart_Y, p_c_old)
 
-        # Active (negative) weights — PSD-safe scaling (always on)
-        if lam > mu:
-            neg_idx = order[mu:]
-            Y_neg = np.stack([self._last_steps[i] for i in neg_idx], axis=1)  # k×(λ-μ)
-            w_neg = W[mu:]
-            if Y_neg.size > 0:
-                # Whitened scaling to bound downdates and keep C PSD
-                Yw = st.B.T @ Y_neg
-                Yw = Yw / np.maximum(st.D[:, None], cfg.jitter)
-                scales = kdim / np.maximum(np.sum(Yw**2, axis=0), cfg.jitter)
-                for j in range(Y_neg.shape[1]):
-                    C_old += (
-                        cμ * w_neg[j] * scales[j] * np.outer(Y_neg[:, j], Y_neg[:, j])
-                    )
-
-        # --- move the mean and build the new chart -------------------------
-        chart_X = Chart.at(st.X)
-        U_bar = chart_X.decode(y_bar)
-        X_new = PRODUCT_CP.retract(st.X, st.sigma * U_bar)
-        chart_Y = Chart.at(X_new)
-
-        # Build T (old → new) by transporting the standard basis in coordinates
-        k = self.k
-        Id = np.eye(k, dtype=np.float64)
-        T_cols = [chart_X.transport_coords(chart_Y, Id[:, j]) for j in range(k)]
-        T = np.column_stack(T_cols)
-
-        # --- push covariance and paths into the NEW chart ------------------
-        C = T @ C_old @ T.T
-        C += cfg.jitter * np.eye(k)
-        evals, evecs = np.linalg.eigh(C)
-        evals = np.maximum(evals, cfg.jitter)
-        B_new = evecs
-        D_new = np.sqrt(evals)
-
-        p_sigma_new = T @ p_sigma_old
-        p_c_new = T @ p_c_old
-
-        # Commit new state
         self.state = _State(
             X=X_new,
             sigma=sigma_new,
@@ -400,10 +373,9 @@ class RiemannianCMA:
             c_c=st.c_c,
             c1=st.c1,
             c_mu=st.c_mu,
+            c_m=st.c_m,
+            chart=chart_Y,
         )
-        self._last_steps = []
-
-    # ------------------------------ driver ----------------------------------
 
     def step(self) -> tuple[Frame, float]:
         """
