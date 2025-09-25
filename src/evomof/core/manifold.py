@@ -57,6 +57,7 @@ class ProductCP:
         f = frame.vectors  # (n, d)
         inner = np.sum(f.conj() * arr, axis=1, keepdims=True)
         out: Complex128Array = arr - inner * f
+
         return out
 
     def retract(self, frame: Frame, tang: Complex128Array | np.ndarray) -> Frame:
@@ -117,6 +118,7 @@ class ProductCP:
         scale_cos[small] = 1.0 - 0.5 * norms[small] ** 2
 
         new_vecs = scale_cos * f + scale_sin * tang
+
         return Frame(new_vecs, normalize=True, copy=False)
 
     def log_map(
@@ -175,6 +177,7 @@ class ProductCP:
 
         diff = g_tilde - c[:, None] * f
         xi: Complex128Array = scale[:, None] * diff
+
         return xi
 
     def transport(

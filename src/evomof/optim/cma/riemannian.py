@@ -19,7 +19,7 @@ import numpy as np
 
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP, Chart
+from evomof.core.manifold import Chart, ProductCP
 
 __all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
 
@@ -127,6 +127,11 @@ class RiemannianCMA:
         )
         self.rng = np.random.default_rng(seed)
 
+        self.geom = ProductCP(
+            retraction_kind="exponential",
+            transport_kind="projection",
+        )
+
         if start_frame is not None:
             if start_frame.shape != (n, d):
                 raise ValueError(
@@ -204,7 +209,7 @@ class RiemannianCMA:
         p_sigma = np.zeros(k)
         p_c = np.zeros(k)
 
-        chart0 = Chart.at(X0)
+        chart0 = Chart.at(X0, geom=self.geom)
 
         return _State(
             X=X0,
@@ -245,7 +250,7 @@ class RiemannianCMA:
             U = st.chart.decode(
                 y[:, i]
             )  # decode each candidate difference into a tangent vector
-            Xi = PRODUCT_CP.retract(
+            Xi = self.geom.retract(
                 st.X, st.sigma * U
             )  # Eq. (40) Hansen 2023 (retract the tangent vector to get the candidate frames)
 
@@ -278,7 +283,7 @@ class RiemannianCMA:
         y_bar = y_sel @ w_pos  # Eq. (41) Hansen 2023
         chart_X = st.chart
         U_bar = chart_X.decode(y_bar)
-        X_new = PRODUCT_CP.retract(
+        X_new = self.geom.retract(
             st.X, st.c_m * st.sigma * U_bar
         )  # Eq. (42) Hansen 2023
         chart_Y = chart_X.transport_to(X_new)

@@ -31,7 +31,6 @@ class RiemannianModel:
         return cls(**init_dict)
 
     def run(self, problem: Problem) -> Result:
-        print(f"Running on (d, n)=({problem.d}, {problem.n})...", flush=True)
         if problem.n <= problem.d:
             frame_vectors = np.eye(problem.d)[: problem.n, :]
             frame = Frame(frame_vectors)
