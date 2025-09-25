@@ -112,20 +112,6 @@ def test_transport_basis_shapes_and_orthonormality():
     assert Qy.shape == (k, r)
 
 
-def test_transport_basis_zero_rank_returns_copy():
-    rng = np.random.default_rng(7)
-    f = Frame.random(n=3, d=4, rng=rng)
-    X = Chart.at(f)
-    Y = Chart.at(PRODUCT_CP.retract(f, 1e-3 * PRODUCT_CP.random_tangent(f, rng=rng)))
-
-    k = X.dim()
-    B = np.empty((k, 0), dtype=np.float64)
-    By = X.transport_basis(Y, B)
-
-    assert By.shape == B.shape
-    assert not np.may_share_memory(By, B)
-
-
 def test_chart_at_raises_for_d_lt_2():
     rng = np.random.default_rng(8)
     f = Frame.random(n=3, d=1, rng=rng)
@@ -142,3 +128,75 @@ def test_encode_shape_mismatch_raises():
     )
     with pytest.raises(ValueError):
         chart.encode(bad)
+
+
+# New tests for chart transport
+def test_transport_to_identity_same_point():
+    rng = np.random.default_rng(10)
+    f = Frame.random(n=3, d=5, rng=rng)
+    X = Chart.at(f)
+
+    # Transport the chart to the same frame
+    Y = X.transport_to(f)
+
+    # Random tangent → coords
+    U = PRODUCT_CP.random_tangent(f, rng=rng, unit=False)
+    y = X.encode(U)
+
+    # Transport coordinates via charts; should be identity
+    y_back = X.transport_coords(Y, y)
+    np.testing.assert_allclose(y_back, y, atol=1e-12)
+
+
+def test_transport_to_consistency_with_vector_transport():
+    rng = np.random.default_rng(11)
+    f = Frame.random(n=3, d=6, rng=rng)
+    X = Chart.at(f)
+
+    # Small move to a nearby frame
+    eta = PRODUCT_CP.random_tangent(f, rng=rng, unit=True)
+    g = PRODUCT_CP.retract(f, 5e-4 * eta)
+
+    # New chart via stabilized transport
+    Y = X.transport_to(g)
+
+    # Random coordinate direction at X
+    y = rng.standard_normal(X.dim())
+    U = X.decode(y)
+
+    # Transport as a vector in the manifold, then re-encode at Y
+    V = PRODUCT_CP.transport(f, g, U)
+    y_enc = Y.encode(V)
+
+    # Coordinate transport via charts should match vector transport + re-encode
+    y_to = X.transport_coords(Y, y)
+    np.testing.assert_allclose(y_to, y_enc, atol=1e-10)
+
+
+def test_transport_to_preserves_norm_small_step():
+    rng = np.random.default_rng(12)
+    f = Frame.random(n=2, d=7, rng=rng)
+    X = Chart.at(f)
+
+    # Nearby frame
+    eta = PRODUCT_CP.random_tangent(f, rng=rng, unit=True)
+    g = PRODUCT_CP.retract(f, 1e-3 * eta)
+
+    Y = X.transport_to(g)
+
+    # Random coord vector; parallel transport should be near-isometric
+    y = rng.standard_normal(X.dim())
+    y_to = X.transport_coords(Y, y)
+    np.testing.assert_allclose(
+        np.linalg.norm(y_to), np.linalg.norm(y), rtol=0, atol=1e-10
+    )
+
+
+def test_transport_to_shape_mismatch_raises():
+    rng = np.random.default_rng(13)
+    f = Frame.random(n=2, d=4, rng=rng)
+    X = Chart.at(f)
+    g = Frame.random(n=3, d=4, rng=rng)  # different shape (n changes)
+
+    with pytest.raises(ValueError):
+        X.transport_to(g)

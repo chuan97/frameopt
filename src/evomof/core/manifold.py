@@ -18,7 +18,7 @@ class ProductCP:
     ----------
     eps : float
         Small numerical threshold used for phase alignment and antipodal guards.
-    retraction : {"sphere", "normalize"}
+    retraction_kind : {"exponential", "normalize"}
         Choice of retraction. "sphere" uses the great‑circle (lift) formula; "normalize"
         uses a first‑order retraction by normalizing ``f + ξ`` row‑wise.
     transport_kind : {"parallel", "projection"}
@@ -27,7 +27,7 @@ class ProductCP:
     """
 
     eps: float = 1e-12
-    retraction: Literal["sphere", "normalize"] = "sphere"
+    retraction_kind: Literal["exponential", "normalize"] = "exponential"
     transport_kind: Literal["parallel", "projection"] = "parallel"
 
     def project(
@@ -69,7 +69,7 @@ class ProductCP:
 
             f_i′ = cos(‖ξ_i‖)·f_i + (sin(‖ξ_i‖)/‖ξ_i‖)·ξ_i.
 
-        If ``retraction == "normalize"``, uses a first‑order retraction: normalize ``f + ξ``
+        If ``retraction_kind == "normalize"``, uses a first‑order retraction: normalize ``f + ξ``
         row‑wise.
 
         Parameters
@@ -94,7 +94,7 @@ class ProductCP:
         if tang.shape != f.shape:
             raise ValueError("Tangent array shape mismatch.")
 
-        if self.retraction == "normalize":
+        if self.retraction_kind == "normalize":
             # First-order retraction: normalize(f + ξ) row-wise
             new_vecs = f + tang
             # Normalize rows to unit norm
