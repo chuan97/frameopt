@@ -114,11 +114,11 @@ class BaseCMAParams:
         if self.weights.ndim != 1 or self.weights.size != self.lambda_:
             raise ValueError("weights must be a 1D array of length lambda_.")
         if np.any(self.weights[: self.mu] < 0):
-            raise ValueError("First mu weights must be non-negative.")
+            raise ValueError("First mu weights must be positive.")
         if not np.isclose(np.sum(self.weights[: self.mu]), 1.0):
             raise ValueError("First mu weights must sum to one.")
-        if np.any(self.weights[self.mu :] >= 0):
-            raise ValueError("Last lambda_ - mu weights must be negative.")
+        if np.any(self.weights[self.mu :] > 0):
+            raise ValueError("Last lambda_ - mu weights must be non-positive.")
         if np.any(self.weights[:-1] - self.weights[1:] < 0):
             raise ValueError("Weights must be in non-ascending order.")
         if not 0 < self.c_sigma < 1:
