@@ -19,9 +19,9 @@ import numpy as np
 
 from evomof.core.energy import diff_coherence
 from evomof.core.frame import Frame
-from evomof.core.manifold import Chart, ProductCP
+from evomof.core.manifold import PRODUCT_CP, Chart, ProductCP
 
-__all__ = ["RiemannianCMAConfig", "RiemannianCMA"]
+__all__ = ["RiemannianCMAParams", "BaseCMAParams", "RiemannianCMABase", "RiemannianCMA"]
 
 
 def _chi_mean(k: int) -> float:
@@ -36,37 +36,56 @@ def _chi_mean(k: int) -> float:
 
 
 @dataclass(frozen=True, slots=True)
-class RiemannianCMAConfig:
+class RiemannianCMAParams:
     """
     Configuration parameters for Riemannian CMA-ES.
 
     Attributes:
-        popsize (int): Population size (λ), number of candidate
-            solutions per generation.
-        parents (int): Number of parents (μ) used for recombination.
-        sigma0 (float): Initial global step-size (standard deviation).
-        seed (int): Random seed for reproducibility.
-        jitter (float): Small regularization term to ensure numerical stability.
-        transport_eigs (bool): Whether to transport eigenvectors to new mean frame.
+    base (BaseCMAParams):
+        Base CMA-ES parameters.
+        geom (ProductCP): Manifold geometry to use.
     """
 
-    popsize: int = 32  # λ
-    parents: int = 16  # μ
-    sigma0: float = 0.5
-    seed: int = 0
-    jitter: float = 1e-12
-    transport_eigs: bool = True  # transport eigenvectors to new mean
+    base: BaseCMAParams
+    geom: ProductCP = PRODUCT_CP
 
 
-@dataclass(slots=True)
-class _State:
-    X: Frame
-    sigma: float
-    B: np.ndarray  # (k×k) orthonormal
-    D: np.ndarray  # (k,) nonnegative
-    p_sigma: np.ndarray  # (k,)
-    p_c: np.ndarray  # (k,)
-    weights: np.ndarray  # (λ,)
+@dataclass(frozen=True, slots=True)
+class BaseCMAParams:
+    """
+    Run-constant CMA-ES parameters in Euclidean dimension ``k``.
+
+    This is **manifold-agnostic**: it encodes only the base CMA hyperparameters
+    (selection weights and learning rates) and generic run constants.
+
+    Attributes
+    ----------
+    k : int
+        Intrinsic search dimension.
+    lambda_ : int
+        Population size (λ).
+    mu : int
+        Number of parents (μ) used for recombination.
+    weights : numpy.ndarray
+        Length-λ vector of selection weights (includes active/negative part if used).
+    mu_eff : float
+        Effective parent number (from the positive block).
+    c_sigma, d_sigma, c_c, c1, c_mu, c_m : float
+        Standard CMA learning-rate hyperparameters.
+    chi_mean : float
+        E‖𝒩(0, I_k)‖ used by step-size control.
+    sigma0 : float
+        Initial global step-size.
+    jitter : float
+        Numerical floor used in covariance regularization.
+    seed : int
+        RNG seed used to initialize the generator.
+    """
+
+    k: int
+    lambda_: int
+    mu: int
+    weights: np.ndarray
     mu_eff: float
     c_sigma: float
     d_sigma: float
@@ -74,102 +93,62 @@ class _State:
     c1: float
     c_mu: float
     c_m: float
-    chart: Chart
+    chi_mean: float
+    sigma0: float
+    jitter: float
+    seed: int
 
+    def __post_init__(self) -> None:
+        if self.k <= 0:
+            raise ValueError("k must be positive.")
+        if self.lambda_ < 2:
+            raise ValueError("lambda_ must be at least two.")
+        if not (1 <= self.mu <= self.lambda_):
+            raise ValueError("mu must satisfy 1 ≤ mu ≤ lambda_.")
+        if not 1 <= self.mu_eff <= self.mu:
+            raise ValueError("mu_eff must satisfy 1 ≤ mu_eff ≤ mu.")
+        if not isinstance(self.weights, np.ndarray):
+            raise TypeError("weights must be a numpy.ndarray.")
+        if self.weights.shape != (self.lambda_,):
+            raise ValueError("weights must have shape (lambda_,).")
+        if self.weights.ndim != 1 or self.weights.size != self.lambda_:
+            raise ValueError("weights must be a 1D array of length lambda_.")
+        if np.any(self.weights[: self.mu] < 0):
+            raise ValueError("First mu weights must be non-negative.")
+        if not np.isclose(np.sum(self.weights[: self.mu]), 1.0):
+            raise ValueError("First mu weights must sum to one.")
+        if np.any(self.weights[self.mu :] >= 0):
+            raise ValueError("Last lambda_ - mu weights must be negative.")
+        if np.any(self.weights[:-1] - self.weights[1:] < 0):
+            raise ValueError("Weights must be in non-ascending order.")
+        if not 0 < self.c_sigma < 1:
+            raise ValueError("c_sigma must be in (0, 1).")
+        if self.d_sigma <= 0:
+            raise ValueError("d_sigma must be positive.")
+        if not 0 <= self.c_m <= 1:
+            raise ValueError("c_m must be in [0, 1].")
+        if not 0 <= self.c_c <= 1:
+            raise ValueError("c_c must be in [0, 1].")
+        if not 0 <= self.c1 <= 1 - self.c_mu:
+            raise ValueError("c_1 must be in [0, 1 - c_mu]")
+        if not 0 <= self.c_mu <= 1 - self.c1:
+            raise ValueError("c_mu must be in [0, 1 - c_1]")
 
-class RiemannianCMA:
-    """
-    Riemannian CMA-ES optimizer for frames on the unit-norm manifold.
-
-    This class implements a Riemannian variant of the CMA-ES algorithm by working
-    in an explicit coordinate system in the tangent space at the current mean frame.
-    The algorithm performs CMA updates in Euclidean coordinates and maps between the
-    tangent space and the manifold using Frame.retract and Frame.transport methods.
-
-    Usage:
-        - Initialize with problem dimensions and optional parameters.
-        - Use `ask()` to generate candidate frames.
-        - Evaluate candidates and pass energies to `tell()`.
-        - Use `step()` to perform a full generation cycle (ask, evaluate, tell).
-        - `run()` performs iterative optimization until convergence or max generations.
-
-    Methods:
-        ask(): Generate a population of candidate frames.
-        tell(candidates, energies): Update the internal state based on
-            evaluated energies.
-        step(): Perform one generation step, returning best candidate and energy.
-        run(): Run the optimizer until convergence or generation limit.
-    """
-
-    def __init__(
-        self,
-        n: int,
-        d: int,
-        sigma0: float = 0.3,
-        start_frame: Frame | None = None,
+    @classmethod
+    def auto(
+        cls,
+        k: int,
         popsize: int | None = None,
-        seed: int | None = None,
         *,
-        energy_fn: Callable[[Frame], float] = diff_coherence,
-        energy_kwargs: dict[str, Any] | None = None,
-    ):
+        sigma0: float = 0.5,
+        jitter: float = 1.0e-12,
+        seed: int = 42,
+    ) -> BaseCMAParams:
         if popsize is None:
-            dim = max(1, 2 * n * (d - 1))
-            popsize = 4 + int(3 * np.log(dim))  # Eq. (48) Hansen 2023
-
-        if seed is None:
-            # Draw a fresh 32‑bit seed from OS entropy for reproducibility when logged
-            seed = int(np.random.SeedSequence().generate_state(1)[0])
-
-        parents = max(1, popsize // 2)
-        self.cfg = RiemannianCMAConfig(
-            popsize=popsize, parents=parents, sigma0=sigma0, seed=seed
-        )
-        self.rng = np.random.default_rng(seed)
-
-        self.geom = ProductCP(
-            retraction_kind="exponential",
-            transport_kind="projection",
-        )
-
-        if start_frame is not None:
-            if start_frame.shape != (n, d):
-                raise ValueError(
-                    "start_frame dimensions mismatch: "
-                    f"expected ({n},{d}), got ({start_frame.shape})"
-                )
-            start_frame = start_frame.copy()
+            lam = 4 + int(3 * np.log(k))
         else:
-            start_frame = Frame.random(n, d, rng=self.rng)
-
-        self.energy_fn = partial(energy_fn, **(energy_kwargs or {}))
-        self.state = self._init_state(start_frame)
-        self._E_norm = _chi_mean(self.k)
-        self._last_steps: np.ndarray
-        self._iter: int = 0
-
-    @property
-    def k(self) -> int:
-        """Intrinsic dimension of the search space (tangent space at mean)."""
-        n, d = self.state.X.shape
-
-        return 2 * n * (d - 1)
-
-    @property
-    def mean(self) -> Frame:
-        """Current mean :class:`Frame`."""
-        return self.state.X
-
-    @property
-    def sigma(self) -> float:
-        """Current global step‑size σ."""
-        return self.state.sigma
-
-    def _init_state(self, X0: Frame) -> _State:
-        n, d = X0.shape
-        k = 2 * n * (d - 1)
-        lam = self.cfg.popsize
-        mu = self.cfg.parents
+            lam = popsize
+        mu = lam // 2
 
         # selection and recombination
         idx = np.arange(1, lam + 1)
@@ -201,33 +180,107 @@ class RiemannianCMA:
         s2 = 1.0 + 2.0 * mu_eff_neg / (mu_eff + 2.0)  # Eq. (51) Hansen 2023
         s3 = (1.0 - c1 - c_mu) / (k * c_mu)  # Eq. (52) Hansen 2023
         scale_neg = min(s1, s2, s3)
-        w_neg /= scale_neg  # Bottom term Eq. (53) Hansen 2023
+        w_neg *= scale_neg  # Bottom term Eq. (53) Hansen 2023
         weights = np.concatenate([w_pos, w_neg])
 
-        B = np.eye(k)
-        D = np.ones(k)
-        p_sigma = np.zeros(k)
-        p_c = np.zeros(k)
-
-        chart0 = Chart.at(X0, geom=self.geom)
-
-        return _State(
-            X=X0,
-            sigma=self.cfg.sigma0,
-            B=B,
-            D=D,
-            p_sigma=p_sigma,
-            p_c=p_c,
+        return cls(
+            k=k,
+            lambda_=lam,
+            mu=mu,
             weights=weights,
             mu_eff=mu_eff,
-            c_sigma=float(c_sigma),
-            d_sigma=float(d_sigma),
-            c_c=float(c_c),
-            c1=float(c1),
-            c_mu=float(c_mu),
-            c_m=float(c_m),
-            chart=chart0,
+            c_sigma=c_sigma,
+            d_sigma=d_sigma,
+            c_c=c_c,
+            c1=c1,
+            c_mu=c_mu,
+            c_m=c_m,
+            chi_mean=_chi_mean(k),
+            sigma0=sigma0,
+            jitter=jitter,
+            seed=seed,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RiemannianCMAState:
+    X: Frame
+    chart: Chart
+    sigma: float
+    iter: int
+    B: np.ndarray  # (k×k) orthonormal
+    D: np.ndarray  # (k,) nonnegative
+    p_sigma: np.ndarray  # (k,)
+    p_c: np.ndarray  # (k,)
+    last_steps: np.ndarray
+
+
+class RiemannianCMABase:
+    """
+    Riemannian CMA-ES optimizer for frames on the unit-norm manifold.
+
+    This class implements a Riemannian variant of the CMA-ES algorithm by working
+    in an explicit coordinate system in the tangent space at the current mean frame.
+    The algorithm performs CMA updates in Euclidean coordinates and maps between the
+    tangent space and the manifold using Frame.retract and Frame.transport methods.
+
+    Usage:
+        - Initialize with problem dimensions and optional parameters.
+        - Use `ask()` to generate candidate frames.
+        - Evaluate candidates and pass energies to `tell()`.
+        - Use `step()` to perform a full generation cycle (ask, evaluate, tell).
+        - `run()` performs iterative optimization until convergence or max generations.
+
+    Methods:
+        ask(): Generate a population of candidate frames.
+        tell(candidates, energies): Update the internal state based on
+            evaluated energies.
+        step(): Perform one generation step, returning best candidate and energy.
+        run(): Run the optimizer until convergence or generation limit.
+    """
+
+    def __init__(
+        self,
+        cfg: RiemannianCMAParams,
+        start_frame: Frame,
+        *,
+        energy_fn: Callable[[Frame], float] = diff_coherence,
+        energy_kwargs: dict[str, Any] | None = None,
+    ):
+        self.cfg = cfg
+        self.rng = np.random.default_rng(cfg.base.seed)
+        self.energy_fn = partial(energy_fn, **(energy_kwargs or {}))
+        self.state = RiemannianCMAState(
+            X=start_frame.copy(),
+            chart=Chart.at(start_frame, geom=self.geom),
+            sigma=cfg.base.sigma0,
+            iter=0,
+            B=np.eye(self.k),
+            D=np.ones(self.k),
+            p_sigma=np.zeros(self.k),
+            p_c=np.zeros(self.k),
+            last_steps=np.empty((self.k, 0), dtype=float),
+        )
+
+    @property
+    def k(self) -> int:
+        """Intrinsic dimension of the search space (tangent space at mean)."""
+        return self.cfg.base.k
+
+    @property
+    def geom(self) -> ProductCP:
+        """Manifold geometry used by the optimizer."""
+        return self.cfg.geom
+
+    @property
+    def mean(self) -> Frame:
+        """Current mean :class:`Frame`."""
+        return self.state.X
+
+    @property
+    def sigma(self) -> float:
+        """Current global step‑size σ."""
+        return self.state.sigma
 
     def ask(self) -> list[Frame]:
         """
@@ -239,7 +292,7 @@ class RiemannianCMA:
                 mean and covariance.
         """
         st = self.state
-        lam = self.cfg.popsize
+        lam = self.cfg.base.lambda_
 
         # sample new population (in old chart)
         z = self.rng.standard_normal((self.k, lam))  # Eq. (38) Hansen 2023
@@ -256,8 +309,17 @@ class RiemannianCMA:
 
             cands.append(Xi)
 
-        self._last_steps = y
-
+        self.state = RiemannianCMAState(
+            X=st.X,
+            chart=st.chart,
+            sigma=st.sigma,
+            iter=st.iter,
+            B=st.B,
+            D=st.D,
+            p_sigma=st.p_sigma,
+            p_c=st.p_c,
+            last_steps=y,
+        )
         return cands
 
     def tell(self, candidates: list[Frame], energies: np.ndarray) -> None:
@@ -270,60 +332,61 @@ class RiemannianCMA:
             energies (np.ndarray): Array of energy values corresponding to
                 each candidate.
         """
-        self._iter += 1
-
-        st, cfg = self.state, self.cfg
-        mu = cfg.parents
+        st = self.state
+        base = self.cfg.base
+        geom = self.geom
+        k = self.k
+        mu = base.mu
+        c_sigma = base.c_sigma
+        mu_eff = base.mu_eff
+        chi_mean = base.chi_mean
+        cc = base.c_c
+        c1, c_mu = base.c1, base.c_mu
+        w = base.weights.copy()
+        iter_new = st.iter + 1
 
         # selection and recombination (in old chart)
         order = np.argsort(energies)
         sel = order[:mu]
-        w_pos = st.weights[:mu]
-        y_sel = self._last_steps[:, sel]  # k×μ
+        w_pos = w[:mu]
+        y_sel = st.last_steps[:, sel]  # k×μ
         y_bar = y_sel @ w_pos  # Eq. (41) Hansen 2023
         chart_X = st.chart
         U_bar = chart_X.decode(y_bar)
-        X_new = self.geom.retract(
-            st.X, st.c_m * st.sigma * U_bar
-        )  # Eq. (42) Hansen 2023
+        X_new = geom.retract(st.X, base.c_m * st.sigma * U_bar)  # Eq. (42) Hansen 2023
         chart_Y = chart_X.transport_to(X_new)
 
         # step-size control (old chart)
         By = st.B.T @ y_bar
         y_white = st.B @ (By / st.D)  # ~ N(0,I)
-        c_sigma = st.c_sigma
         p_sigma_old = (1.0 - c_sigma) * st.p_sigma + np.sqrt(
-            c_sigma * (2.0 - c_sigma) * st.mu_eff
+            c_sigma * (2.0 - c_sigma) * mu_eff
         ) * y_white  # Eq. (43) Hansen 2023
         sigma_new = st.sigma * np.exp(
-            (c_sigma / st.d_sigma) * (np.linalg.norm(p_sigma_old) / self._E_norm - 1.0)
+            (c_sigma / base.d_sigma) * (np.linalg.norm(p_sigma_old) / chi_mean - 1.0)
         )  # Eq. (44) Hansen 2023
 
         # covariance matrix adaptation (old chart)
-        denom = np.sqrt(1.0 - (1.0 - c_sigma) ** (2 * self._iter))
-        k = self.k
+        denom = np.sqrt(1.0 - (1.0 - c_sigma) ** (2 * iter_new))
         hsig = (
             1.0
             if (
-                np.linalg.norm(p_sigma_old) / (self._E_norm * denom)
+                np.linalg.norm(p_sigma_old) / (chi_mean * denom)
                 < (1.4 + 2.0 / (k + 1.0))
             )
             else 0.0
         )
-        cc = st.c_c
         p_c_old = (1.0 - cc) * st.p_c + hsig * np.sqrt(
-            cc * (2.0 - cc) * st.mu_eff
+            cc * (2.0 - cc) * mu_eff
         ) * y_bar  # Eq. (45) Hansen 2023
         C_old = st.B @ np.diag(st.D**2) @ st.B.T
-        c1, c_mu = st.c1, st.c_mu
-        w = st.weights.copy()
         sum_w = np.sum(w)
         delta_h = (1.0 - hsig) * cc * (2.0 - cc)
         C_old *= (
             1.0 + c1 * delta_h - c1 - c_mu * sum_w
         )  # First term Eq. (46) Hansen 2023
         C_old += c1 * np.outer(p_c_old, p_c_old)  # Second term Eq. (46) Hansen 2023
-        y_all = self._last_steps[:, order]
+        y_all = st.last_steps[:, order]
         neg_mask = w < 0.0
         y_neg = y_all[:, neg_mask]
         Yw = st.B.T @ y_neg
@@ -336,27 +399,21 @@ class RiemannianCMA:
 
         # transport covariance eigenbasis and paths to the new mean
         vals, vecs = np.linalg.eigh(C_old)
-        D_new = np.sqrt(np.maximum(vals, cfg.jitter))
+        D_new = np.sqrt(np.maximum(vals, base.jitter))
         B_new = chart_X.transport_basis(chart_Y, vecs)
         p_sigma_new = chart_X.transport_coords(chart_Y, p_sigma_old)
         p_c_new = chart_X.transport_coords(chart_Y, p_c_old)
 
-        self.state = _State(
+        self.state = RiemannianCMAState(
             X=X_new,
-            sigma=sigma_new,
+            chart=chart_Y,
+            sigma=float(sigma_new),
+            iter=int(iter_new),
             B=B_new,
             D=D_new,
             p_sigma=p_sigma_new,
             p_c=p_c_new,
-            weights=st.weights,
-            mu_eff=st.mu_eff,
-            c_sigma=st.c_sigma,
-            d_sigma=st.d_sigma,
-            c_c=st.c_c,
-            c1=st.c1,
-            c_mu=st.c_mu,
-            c_m=st.c_m,
-            chart=chart_Y,
+            last_steps=st.last_steps,
         )
 
     def step(self) -> tuple[Frame, float]:
@@ -432,3 +489,76 @@ class RiemannianCMA:
         print(f"Finished {g} gens in {time.time()-t0:.1f}s → best {best_E:.6e}\n")
 
         return best_frame
+
+
+class RiemannianCMA:
+    """
+    Convenience wrapper around :class:`RiemannianCMABase` with a user-friendly
+    constructor mirroring ProjectionCMA.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        d: int,
+        sigma0: float = 0.3,
+        start_frame: Frame | None = None,
+        popsize: int | None = None,
+        seed: int | None = None,
+        *,
+        energy_fn: Callable[[Frame], float] = diff_coherence,
+        energy_kwargs: dict[str, Any] | None = None,
+    ):
+        if seed is None:
+            seed = int(np.random.SeedSequence().generate_state(1)[0])
+
+        if start_frame is not None:
+            if start_frame.shape != (n, d):
+                raise ValueError(
+                    "start_frame dimensions mismatch: "
+                    f"expected ({n},{d}), got ({start_frame.shape})"
+                )
+            X0 = start_frame
+        else:
+            X0 = Frame.random(n, d, rng=np.random.default_rng(seed))
+
+        k = 2 * n * (d - 1)
+        base = BaseCMAParams.auto(k=k, popsize=popsize, sigma0=sigma0, seed=seed)
+        geom = ProductCP(
+            retraction_kind="exponential",
+            transport_kind="projection",
+        )
+        params = RiemannianCMAParams(base=base, geom=geom)
+
+        self.impl = RiemannianCMABase(
+            params, X0, energy_fn=energy_fn, energy_kwargs=energy_kwargs
+        )
+
+    @property
+    def k(self) -> int:
+        return self.impl.k
+
+    @property
+    def mean(self) -> Frame:
+        return self.impl.mean
+
+    @property
+    def sigma(self) -> float:
+        return self.impl.sigma
+
+    def ask(self) -> list[Frame]:
+        return self.impl.ask()
+
+    def tell(self, candidates: list[Frame], energies: np.ndarray) -> None:
+        self.impl.tell(candidates, energies)
+
+    def step(self) -> tuple[Frame, float]:
+        return self.impl.step()
+
+    def run(
+        self,
+        max_gen: int = 200,
+        tol: float = 1e-12,
+        log_every: int = 10,
+    ) -> Frame:
+        return self.impl.run(max_gen=max_gen, tol=tol, log_every=log_every)

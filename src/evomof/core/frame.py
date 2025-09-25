@@ -125,6 +125,7 @@ class Frame:
         """
         rng = rng or np.random.default_rng()
         z = rng.standard_normal((n, d)) + 1j * rng.standard_normal((n, d))
+
         return cls(z, normalize=True, copy=False)
 
     # ------------------------------------------------------------------ #
