@@ -126,7 +126,7 @@ class _PymanoptProductCP(Manifold):  # type: ignore[misc]
         """
         Orthogonal projection onto the CP tangent at ``X``; delegates to :class:`ProductCP`.
         """
-        return self._geom.project(X, U)
+        return self._geom.project_to_tangent(X, U)
 
     def exp(self, X: Frame, U: np.ndarray) -> Frame:
         """

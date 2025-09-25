@@ -30,7 +30,7 @@ class ProductCP:
     retraction_kind: Literal["exponential", "normalize"] = "exponential"
     transport_kind: Literal["parallel", "projection"] = "parallel"
 
-    def project(
+    def project_to_tangent(
         self, frame: Frame, arr: Complex128Array | np.ndarray
     ) -> Complex128Array:
         """
@@ -290,7 +290,7 @@ class ProductCP:
         rng = rng or np.random.default_rng()
         shape = frame.vectors.shape
         Z = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
-        U = self.project(frame, Z.astype(np.complex128, copy=False))
+        U = self.project_to_tangent(frame, Z.astype(np.complex128, copy=False))
 
         if unit:
             nrm = np.linalg.norm(U)
@@ -409,7 +409,7 @@ class Chart:
             U[i] = Qi @ c
 
         # Kill numerical drift along the base vector
-        return self.geom.project(self.frame, U)
+        return self.geom.project_to_tangent(self.frame, U)
 
     def transport_coords(self, to: Chart, y: Float64Array) -> Float64Array:
         """Transport coordinates ``y`` from this chart to chart ``to``."""

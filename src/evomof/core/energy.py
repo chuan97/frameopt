@@ -168,7 +168,7 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     coeff = 2 * q * abs_pow * g  # factor 2 accounts for (i,j) and (j,i) contributions
     np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
-    return PRODUCT_CP.project(frame, grad)
+    return PRODUCT_CP.project_to_tangent(frame, grad)
 
 
 def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
@@ -219,4 +219,4 @@ def grad_diff_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     coeff[mask] = (2.0 * L / S) * r[mask] * g[mask] / (abs_g[mask] ** 2)
     np.fill_diagonal(coeff, 0.0)
     grad = coeff @ frame.vectors
-    return PRODUCT_CP.project(frame, grad)
+    return PRODUCT_CP.project_to_tangent(frame, grad)

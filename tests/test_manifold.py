@@ -8,7 +8,7 @@ def test_log_retract_inverse():
     rng = np.random.default_rng(2)
     f1 = Frame.random(8, 4, rng=rng)
     tang = 1e-3 * rng.standard_normal(f1.shape) + 1e-3j * rng.standard_normal(f1.shape)
-    tang = PRODUCT_CP.project(f1, tang)
+    tang = PRODUCT_CP.project_to_tangent(f1, tang)
     f2 = PRODUCT_CP.retract(f1, tang)
     ξ = PRODUCT_CP.log_map(f1, f2)
     f3 = PRODUCT_CP.retract(f1, ξ)
@@ -20,7 +20,7 @@ def test_log_retract_large_angle():
 
     # Build a deterministic tangent: swap real/imag, project, normalise.
     swaps = 1j * f1.vectors  # swap real<->imag parts; certainly not collinear
-    tang = PRODUCT_CP.project(f1, swaps)
+    tang = PRODUCT_CP.project_to_tangent(f1, swaps)
     tang /= np.linalg.norm(swaps, axis=1, keepdims=True)
 
     f2 = PRODUCT_CP.retract(f1, tang)
@@ -38,7 +38,7 @@ def test_project_tangent():
     # Build an arbitrary ambient perturbation.
     ambient = rng.standard_normal(f.shape) + 1j * rng.standard_normal(f.shape)
 
-    proj = PRODUCT_CP.project(f, ambient)
+    proj = PRODUCT_CP.project_to_tangent(f, ambient)
 
     # 1. Shape consistency
     assert proj.shape == f.shape
@@ -54,11 +54,15 @@ def test_project_kills_radial_and_phase():
 
     # Radial direction projects to zero
     radial = f.vectors.copy()
-    np.testing.assert_allclose(PRODUCT_CP.project(f, radial), 0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        PRODUCT_CP.project_to_tangent(f, radial), 0.0, atol=1e-12
+    )
 
     # Phase (vertical) direction projects to zero
     vertical = 1j * f.vectors
-    np.testing.assert_allclose(PRODUCT_CP.project(f, vertical), 0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        PRODUCT_CP.project_to_tangent(f, vertical), 0.0, atol=1e-12
+    )
 
 
 def test_transport_tangent_and_norm():
@@ -68,11 +72,11 @@ def test_transport_tangent_and_norm():
 
     # Tangent at X
     U = rng.standard_normal(X.shape) + 1j * rng.standard_normal(X.shape)
-    U = PRODUCT_CP.project(X, U)
+    U = PRODUCT_CP.project_to_tangent(X, U)
 
     # Small geodesic step to Y
     eta = 0.1 * (rng.standard_normal(X.shape) + 1j * rng.standard_normal(X.shape))
-    eta = PRODUCT_CP.project(X, eta)
+    eta = PRODUCT_CP.project_to_tangent(X, eta)
     Y = PRODUCT_CP.retract(X, eta)
 
     V = PRODUCT_CP.transport(X, Y, U)
@@ -93,10 +97,10 @@ def test_transport_roundtrip():
     X = Frame.random(6, 3, rng=rng)
 
     U = rng.standard_normal(X.shape) + 1j * rng.standard_normal(X.shape)
-    U = PRODUCT_CP.project(X, U)
+    U = PRODUCT_CP.project_to_tangent(X, U)
 
     eta = 0.2 * (rng.standard_normal(X.shape) + 1j * rng.standard_normal(X.shape))
-    eta = PRODUCT_CP.project(X, eta)
+    eta = PRODUCT_CP.project_to_tangent(X, eta)
     Y = PRODUCT_CP.retract(X, eta)
 
     V = PRODUCT_CP.transport(X, Y, U)
@@ -110,7 +114,7 @@ def test_transport_identity_when_same_point():
     rng = np.random.default_rng(9)
     X = Frame.random(5, 3, rng=rng)
     U = rng.standard_normal(X.shape) + 1j * rng.standard_normal(X.shape)
-    U = PRODUCT_CP.project(X, U)
+    U = PRODUCT_CP.project_to_tangent(X, U)
 
     V = PRODUCT_CP.transport(X, X, U)
 
