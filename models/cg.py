@@ -10,8 +10,8 @@ import yaml
 
 from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
 from frameopt.core.frame import Frame
+from frameopt.models.api import Problem, Result
 from frameopt.optim.local import cg_minimize
-from models.api import Problem, Result
 
 
 @dataclass(frozen=True, slots=True)

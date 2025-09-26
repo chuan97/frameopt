@@ -5,7 +5,7 @@ Design
 ------
 We expose a small interface via a typing.Protocol:
 
-    class Scheduler(Protocol):
+    class PScheduler(Protocol):
         def current_p(self) -> float: ...
         def update(self, *, step: int, global_best_coh: float)
             -> tuple[float, bool]: ...
@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 __all__ = [
-    "Scheduler",
+    "PScheduler",
     "FixedPScheduler",
     "AdaptivePScheduler",
 ]
@@ -39,7 +39,7 @@ __all__ = [
 # ----------------------------- Public interface -----------------------------
 
 
-class Scheduler(Protocol):
+class PScheduler(Protocol):
     """Minimal interface for a p-scheduler."""
 
     def current_p(self) -> float:

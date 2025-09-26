@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from frameopt.optim.utils.p_scheduler import AdaptivePScheduler, FixedPScheduler
+from frameopt.models.p_scheduler import AdaptivePScheduler, FixedPScheduler
 
 # -------------------------- FixedPScheduler tests ---------------------------
 

@@ -14,14 +14,14 @@ import yaml
 from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
 from frameopt.core.frame import Frame
+from frameopt.models.api import Problem, Result
+from frameopt.models.p_scheduler import PScheduler
 from frameopt.optim.local import cg_minimize
-from frameopt.optim.utils.p_scheduler import Scheduler
-from models.api import Problem, Result
 
 
 @dataclass(frozen=True, slots=True)
 class CGPRampModel:
-    scheduler_factory: Callable[[], Scheduler]
+    scheduler_factory: Callable[[], PScheduler]
     maxiter: int = 1000
     seed: int | None = None
     step: int = 10
@@ -40,8 +40,8 @@ class CGPRampModel:
         if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
             sinit["total_steps"] = init["maxiter"] // init["step"]
 
-        def factory() -> Scheduler:
-            sch: Scheduler = sched_cls(**sinit)
+        def factory() -> PScheduler:
+            sch: PScheduler = sched_cls(**sinit)
             return sch
 
         init["scheduler_factory"] = factory

@@ -11,8 +11,8 @@ import yaml
 from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence, diff_coherence
 from frameopt.core.frame import Frame
+from frameopt.models.api import Problem, Result
 from frameopt.optim.cma import RiemannianCMA
-from models.api import Problem, Result
 
 
 @dataclass(frozen=True, slots=True)

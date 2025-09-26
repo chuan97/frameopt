@@ -25,7 +25,7 @@ from typing import Any
 import yaml
 from dask.distributed import Client, as_completed
 
-from models.api import Problem
+from frameopt.models.api import Problem
 from scripts._utils import (
     ensure_dir,
     git_sha,

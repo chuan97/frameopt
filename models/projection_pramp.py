@@ -13,15 +13,15 @@ import yaml
 from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence, diff_coherence
 from frameopt.core.frame import Frame
+from frameopt.models.api import Problem, Result
+from frameopt.models.p_scheduler import PScheduler
 from frameopt.optim.cma import ProjectionCMA
 from frameopt.optim.cma.utils import realvec_to_frame
-from frameopt.optim.utils.p_scheduler import Scheduler
-from models.api import Problem, Result
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectionPRampModel:
-    scheduler_factory: Callable[[], Scheduler]
+    scheduler_factory: Callable[[], PScheduler]
     sigma0: float = 0.3
     popsize: int | None = None
     max_gen: int = 50_000
@@ -41,8 +41,8 @@ class ProjectionPRampModel:
         if class_name == "AdaptivePScheduler" and "total_steps" not in sinit:
             sinit["total_steps"] = init["max_gen"]
 
-        def factory() -> Scheduler:
-            sch: Scheduler = sched_cls(**sinit)
+        def factory() -> PScheduler:
+            sch: PScheduler = sched_cls(**sinit)
             return sch
 
         init["scheduler_factory"] = factory
