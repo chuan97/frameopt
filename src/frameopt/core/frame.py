@@ -202,6 +202,7 @@ class Frame:
         """
         f = Frame(self._vectors, normalize=False, copy=True)
         f._is_normalized = self._is_normalized
+
         return f
 
     def __iter__(self) -> Iterator[Complex128Array]:
@@ -231,7 +232,6 @@ class Frame:
         -------
         None
         """
-        # Save the complex array directly
         np.save(path, self._vectors)
 
     @classmethod
@@ -256,15 +256,15 @@ class Frame:
         a RuntimeWarning is emitted and the loaded data are normalized.
         """
         raw = np.asarray(np.load(path), dtype=np.complex128)
-        # Build normalized copy using the standard constructor
         f_norm = cls(raw, normalize=True, copy=True)
-        # Warn if the on-disk data were not already normalized
+
         if not np.allclose(f_norm.vectors, raw, rtol=1e-12, atol=1e-15):
             warnings.warn(
                 f"Loaded frame from {path!s} was not normalized; normalizing on load.",
                 RuntimeWarning,
                 stacklevel=2,
             )
+
         return f_norm
 
     def export_txt(self, path: str) -> None:
@@ -338,14 +338,13 @@ class Frame:
         reals = nums[: n * d].reshape((n, d))
         imags = nums[n * d :].reshape((n, d))
         raw = (reals + 1j * imags).astype(np.complex128, copy=False)
-
-        # Build normalized copy using the standard constructor
         f_norm = cls(raw, normalize=True, copy=True)
-        # Warn if the on-disk data were not already normalized
+
         if not np.allclose(f_norm.vectors, raw, rtol=1e-12, atol=1e-15):
             warnings.warn(
                 f"Loaded frame from {path!s} was not normalized; normalizing on load.",
                 RuntimeWarning,
                 stacklevel=2,
             )
+
         return f_norm
