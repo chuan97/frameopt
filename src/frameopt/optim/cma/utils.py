@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from evomof.core._types import Float64Array
-from evomof.core.frame import Frame
+from frameopt.core._types import Float64Array
+from frameopt.core.frame import Frame
 
 
 def frame_to_realvec(frame: Frame) -> Float64Array:

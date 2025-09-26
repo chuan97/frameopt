@@ -1,6 +1,6 @@
 import math
 
-from evomof.bounds import bukhcox, levenstein, max_lower_bound, orthoplex, welch
+from frameopt.bounds import bukhcox, levenstein, max_lower_bound, orthoplex, welch
 
 
 def test_bukhcox():

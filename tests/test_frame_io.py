@@ -1,7 +1,7 @@
 import numpy as np
 
-from evomof.core.energy import coherence
-from evomof.core.frame import Frame
+from frameopt.core.energy import coherence
+from frameopt.core.frame import Frame
 
 
 def test_save_load_npy(tmp_path):

@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
-from evomof.core.frame import Frame
-from evomof.optim.local import cg_minimize
+from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.optim.local import cg_minimize
 from models.api import Problem, Result
 from models.projection_pramp import ProjectionPRampModel
 

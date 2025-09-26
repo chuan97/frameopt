@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from evomof.core.frame import Frame
-from evomof.optim.cma import ProjectionCMA
-from evomof.optim.cma.utils import frame_to_realvec, realvec_to_frame
+from frameopt.core.frame import Frame
+from frameopt.optim.cma import ProjectionCMA
+from frameopt.optim.cma.utils import frame_to_realvec, realvec_to_frame
 
 
 def test_ask_returns_correct_population():

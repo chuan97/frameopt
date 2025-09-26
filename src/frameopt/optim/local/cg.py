@@ -8,9 +8,9 @@ from pymanopt import Problem, function
 from pymanopt.manifolds.manifold import Manifold
 from pymanopt.optimizers.conjugate_gradient import ConjugateGradient
 
-from evomof.core._types import Complex128Array
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP, ProductCP
+from frameopt.core._types import Complex128Array
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP, ProductCP
 
 
 def minimize(
@@ -97,7 +97,7 @@ class _PymanoptProductCP(Manifold):  # type: ignore[misc]
     """
     Minimal Pymanopt manifold wrapper for :class:`Frame` on (CP^{d−1})ⁿ.
 
-    Delegates all geometry to :class:`evomof.core.manifold.ProductCP`.
+    Delegates all geometry to :class:`frameopt.core.manifold.ProductCP`.
     """
 
     def __init__(self, n: int, d: int, geom: ProductCP | None = None):

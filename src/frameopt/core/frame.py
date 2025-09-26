@@ -1,4 +1,4 @@
-# src/evomof/core/frame.py
+# src/frameopt/core/frame.py
 from __future__ import annotations
 
 import warnings
@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import numpy as np
 
-from evomof.core._types import Complex128Array
+from frameopt.core._types import Complex128Array
 
 
 class Frame:

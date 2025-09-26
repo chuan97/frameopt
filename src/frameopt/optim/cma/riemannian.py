@@ -17,9 +17,9 @@ from typing import Any
 
 import numpy as np
 
-from evomof.core.energy import diff_coherence
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP, Chart, ProductCP
+from frameopt.core.energy import diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP, Chart, ProductCP
 
 __all__ = ["RiemannianCMAParams", "BaseCMAParams", "RiemannianCMABase", "RiemannianCMA"]
 

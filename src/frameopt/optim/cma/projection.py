@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 
 import cma.evolution_strategy as cmaes
-from evomof.core._types import Float64Array
-from evomof.core.energy import diff_coherence
-from evomof.core.frame import Frame
+from frameopt.core._types import Float64Array
+from frameopt.core.energy import diff_coherence
+from frameopt.core.frame import Frame
 
 from .utils import frame_to_realvec, realvec_to_frame
 

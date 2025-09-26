@@ -1,11 +1,11 @@
 import numpy as np
 
-from evomof.core.energy import diff_coherence
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP
+from frameopt.core.energy import diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP
 
 # Import the user-facing RCMA class (wrapper around the engine)
-from evomof.optim.cma.riemannian import RiemannianCMA
+from frameopt.optim.cma.riemannian import RiemannianCMA
 
 
 def test_ask_returns_correct_population():

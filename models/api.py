@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from evomof.core.frame import Frame
+from frameopt.core.frame import Frame
 
 
 @dataclass(frozen=True, slots=True)

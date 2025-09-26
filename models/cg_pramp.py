@@ -11,11 +11,11 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from evomof.bounds import max_lower_bound
-from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
-from evomof.core.frame import Frame
-from evomof.optim.local import cg_minimize
-from evomof.optim.utils.p_scheduler import Scheduler
+from frameopt.bounds import max_lower_bound
+from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.optim.local import cg_minimize
+from frameopt.optim.utils.p_scheduler import Scheduler
 from models.api import Problem, Result
 
 

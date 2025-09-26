@@ -2,8 +2,8 @@
 import argparse
 import re
 
-from evomof.core.energy import coherence
-from evomof.core.frame import Frame
+from frameopt.core.energy import coherence
+from frameopt.core.frame import Frame
 
 FNAME_RE = re.compile(r"(\d+)x(\d+)_\w{3,4}\.txt$")
 

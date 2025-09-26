@@ -1,6 +1,6 @@
 import numpy as np
 
-from evomof.core.frame import Frame
+from frameopt.core.frame import Frame
 
 
 def test_random_shape():

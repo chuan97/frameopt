@@ -13,14 +13,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from evomof.core.energy import (
+from frameopt.core.energy import (
     diff_coherence,
     frame_potential,
     grad_diff_coherence,
     grad_frame_potential,
 )
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP
 
 # ---------------------------- helpers ---------------------------------
 

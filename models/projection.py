@@ -8,10 +8,10 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from evomof.bounds import max_lower_bound
-from evomof.core.energy import coherence, diff_coherence
-from evomof.core.frame import Frame
-from evomof.optim.cma import ProjectionCMA
+from frameopt.bounds import max_lower_bound
+from frameopt.core.energy import coherence, diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.optim.cma import ProjectionCMA
 from models.api import Problem, Result
 
 

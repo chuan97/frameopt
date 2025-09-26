@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from evomof.core._types import Complex128Array, Float64Array
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP
+from frameopt.core._types import Complex128Array, Float64Array
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP
 
 # -----------------------------------------------------------------------------#
 # Helper utilities                                                             #

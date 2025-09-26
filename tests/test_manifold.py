@@ -1,7 +1,7 @@
 import numpy as np
 
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP
 
 
 def test_log_retract_inverse():

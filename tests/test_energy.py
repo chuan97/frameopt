@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from evomof.core.energy import coherence, diff_coherence, frame_potential
-from evomof.core.frame import Frame
+from frameopt.core.energy import coherence, diff_coherence, frame_potential
+from frameopt.core.frame import Frame
 
 # ---------------------------------------------------------------------
 # Fixtures

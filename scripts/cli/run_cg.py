@@ -17,9 +17,9 @@ import time
 
 import numpy as np
 
-from evomof.core.energy import coherence, diff_coherence, grad_diff_coherence
-from evomof.core.frame import Frame
-from evomof.optim.local import cg_minimize
+from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
+from frameopt.core.frame import Frame
+from frameopt.optim.local import cg_minimize
 
 
 def parse_args():

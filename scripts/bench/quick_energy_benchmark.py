@@ -2,13 +2,13 @@ import time
 
 import numpy as np
 
-from evomof.core.energy import (
+from frameopt.core.energy import (
     diff_coherence,
     frame_potential,
     grad_diff_coherence,
     grad_frame_potential,
 )
-from evomof.core.frame import Frame
+from frameopt.core.frame import Frame
 
 
 def timed(fn, *args, repeat=10):

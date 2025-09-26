@@ -2,8 +2,8 @@
 Example for projection‑based CMA‑ES.
 """
 
-from evomof.core.energy import coherence
-from evomof.optim.cma import RiemannianCMA
+from frameopt.core.energy import coherence
+from frameopt.optim.cma import RiemannianCMA
 
 N, D = 16, 4
 SIGMA0 = 0.3

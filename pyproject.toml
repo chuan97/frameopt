@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "evomof"
+name = "frameopt"
 version = "0.1.0"
 description = "Evolutionary optimisation of Grassmannian frames"
 authors = [
@@ -73,7 +73,7 @@ features = ["dev", "suite"]
 [tool.hatch.envs.default.scripts]
 lint = "ruff check src tests scripts models && black --check src tests scripts models"
 test = "pytest -q"
-typecheck = "mypy src/evomof models"
+typecheck = "mypy src/frameopt models"
 bench = "python scripts/bench/quick_energy_benchmark.py"
 all = "hatch run lint ; hatch run typecheck ; hatch run test ; hatch run bench"
 

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from evomof.core.frame import Frame
-from evomof.core.manifold import PRODUCT_CP, Chart
+from frameopt.core.frame import Frame
+from frameopt.core.manifold import PRODUCT_CP, Chart
 
 
 def test_dim_matches_formula():

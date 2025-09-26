@@ -1,7 +1,7 @@
 """Coherence lower bounds.
 
 All functions return a numerical lower bound on the minimal achievable coherence
-for a (d, n) frame/packing. Implementations are independent of evomof.core/optim.
+for a (d, n) frame/packing. Implementations are independent of frameopt.core/optim.
 """
 
 import math

@@ -1,9 +1,9 @@
 """
-Common NumPy typing aliases used throughout *evomof*.
+Common NumPy typing aliases used throughout *frameopt*.
 
 Import with::
 
-    from evomof.core._types import Complex128Array, Float64Array
+    from frameopt.core._types import Complex128Array, Float64Array
 """
 
 from typing import TypeAlias

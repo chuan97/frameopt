@@ -5,8 +5,8 @@ from typing import Literal
 
 import numpy as np
 
-from evomof.core._types import Complex128Array, Float64Array
-from evomof.core.frame import Frame
+from frameopt.core._types import Complex128Array, Float64Array
+from frameopt.core.frame import Frame
 
 
 @dataclass(frozen=True, slots=True)
