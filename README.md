@@ -1,6 +1,6 @@
-# evomof
+# frameopt
 
-![CI](https://github.com/chuan97/evomof/actions/workflows/ci.yaml/badge.svg)
+![CI](https://github.com/chuan97/frameopt/actions/workflows/ci.yaml/badge.svg)
 
 A suite of optimization algorithms and tools for the numerical construction of maximally orthogonal frames (MOFs) in complex space, 
 in particular Grassmannian frames/optimal packings.
@@ -11,6 +11,7 @@ It currently features `ProjectionCMA`, a projection-based CMA-ES routine (based 
 
 The submodule `models` defines an API to build custom models to construct MOFs, a model takes a `Problem` (a pair of $(d, n)$ values indicating the dimension $d$ and the size $n$ of the desired MOF) as input and outputs a `Result`.  The `Model` protocol is designed to allow the construction and automated benchmarking of custom optimization pipelines with a common interface. For example, `ProjectionPRampModel` combines the `ProjectionCMA` optimizer with a ramp up protocol in the exponent $p$ of the energy function `diff_coherence`, with the goal of producing Grassmannian frames. A sequential combination of different optimizers, e.g. global then local, could also be implemented as a model.
 
+## Project structure
 ```text
 src
 └── evomof
