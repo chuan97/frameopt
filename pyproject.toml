@@ -47,7 +47,7 @@ select = ["E", "F", "I", "B", "UP", "PERF"]
 ignore = ["E501"]  # line length
 
 [tool.ruff.lint.isort]
-known-first-party = ["evomof"]
+known-first-party = ["frameopt"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -14,26 +14,26 @@ The submodule `models` defines an API to build custom models to construct MOFs, 
 ## Project structure
 ```text
 src
-└── evomof
+└── frameopt
     ├── __init__.py
     ├── bounds.py
     ├── core
-    │   ├── __init__.py
-    │   ├── _types.py
-    │   ├── energy.py
-    │   ├── frame.py
-    │   └── manifold.py
+    │   ├── __init__.py
+    │   ├── _types.py
+    │   ├── energy.py
+    │   ├── frame.py
+    │   └── manifold.py
     ├── optim
-    │   ├── cma
-    │   │   ├── __init__.py
-    │   │   ├── projection.py
-    │   │   ├── riemannian.py
-    │   │   └── utils.py
-    │   ├── local
-    │   │   ├── __init__.py
-    │   │   └── cg.py
-    │   └── utils
-    │       └── p_scheduler.py
+    │   ├── cma
+    │   │   ├── __init__.py
+    │   │   ├── projection.py
+    │   │   ├── riemannian.py
+    │   │   └── utils.py
+    │   ├── local
+    │   │   ├── __init__.py
+    │   │   └── cg.py
+    │   └── utils
+    │       └── p_scheduler.py
     └── py.typed
 models
 ├── __init__.py
@@ -41,7 +41,10 @@ models
 ├── cg.py
 ├── cg_pramp.py
 ├── projection.py
+├── projection_cg.py
 ├── projection_pramp.py
+├── riemannian.py
+├── riemannian_pramp.py
 └── utils.py
 ```
 
