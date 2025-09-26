@@ -5,9 +5,9 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any
 
+import cma.evolution_strategy as cmaes
 import numpy as np
 
-import cma.evolution_strategy as cmaes
 from frameopt.core._types import Float64Array
 from frameopt.core.energy import diff_coherence
 from frameopt.core.frame import Frame
