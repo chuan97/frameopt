@@ -8,7 +8,7 @@ in particular Grassmannian frames/optimal packings.
 Work in progress. 
 
 The core objects are:
-* `frameopt.core.frame.Frame`: stores a finite unit-norm frame of $n$ elements in complex space $\mathbb C^d$. The global phase of each vector is removed, so the frame is actually an element of $(\mathbb C P^d)^n$.
+* `frameopt.core.frame.Frame`: stores a finite unit-norm frame of $n$ elements in complex space $\mathbb C^d$. The global phase of each vector is removed, so `Frame` actually stores an element of $(\mathbb C P^{d-1})^n$.
 * `frameopt.core.manifold.ProducCP`: implements operations on the product manifold of complex projective spaces, i.e. the manifold of frames as stored in `Frame`. Supported operations include: projection onto the tangent space at a point, retraction onto the manifold, and parallel transport of tangent vectors.
 * `frameopt.core.manifold.chart`: implements a chart at a point, i.e. a frame, in the product manifold of complex projective spaces. The chart provides an orthonormal basis in tangent space and can thus enconde and decode tangent vectors to and from real coordinates in $\mathbb R^{2n(d-1)}$, and transport these coordinates across charts. It can also transport its basis to another point to form a new chart there.
 
@@ -20,8 +20,9 @@ The available optimizers are:
 Additionally:
 * `frameopt.core.energy`: implements functions to compute the frame coherence, the frame potential and a differentiable surrogate for the coherence. These energy functions can be minimized with any of the optimizers.
 * `frameopt.bounds`: implements the Buhk-Cox, Welch, orthoplex, and Levenstein bounds for the coherence of a frame, as well as a master function `max_lower_bound` that returns the maximum applicable lower bound for each $(d, n)$ pair.
-
-The submodule `models` defines an API to build custom models to construct MOFs, a model takes a `models.api.Problem` (a pair of $(d, n)$ values indicating the dimension $d$ and the size $n$ of the desired frame) as input and outputs a `models.api.Result`.  The `models.api.Model` protocol is designed to facilitate the construction and automated benchmarking of custom optimization pipelines with a common interface. For example, `models.ProjectionPRampModel` combines the `ProjectionCMA` optimizer with a ramp up protocol in the exponent $p$ of the differentiable surrogate for the coherence, with the goal of producing Grassmannian frames. A sequential combination of different optimizers, e.g. global then local, could also be implemented as a model.
+* `frameopt.models`: defines an API to build custom models to construct MOFs. A model takes a `frameopt.models.api.Problem` (a pair of $(d, n)$ values indicating the dimension $d$ and the size $n$ of the desired frame) as input and outputs a `frameopt.models.api.Result`.  The `frameopt.models.api.Model` protocol is designed to facilitate the construction and automated benchmarking of custom optimization pipelines with a common interface.
+* `models/`: contains some models. For example, `models/projection_pramp.py` implements `ProjectionPRampModel`, which combines the `ProjectionCMA` optimizer with a ramp up protocol in the exponent $p$ of the differentiable surrogate for the coherence, with the goal of producing Grassmannian frames. The ramp up protocol is provided by `frameopt.models.p_scheduler.AdaptivePScheduler`.
+* `scripts/`: contains some useful scripts. In particular `scripts/bench/run_model.py` can read a set of input problems, and a model and its parameters from config files, parallel run the model on the problems, and store the results.
 
 ## Project structure
 ```text
@@ -35,29 +36,44 @@ src
     │   ├── energy.py
     │   ├── frame.py
     │   └── manifold.py
+    ├── models
+    │   ├── __init__.py
+    │   ├── api.py
+    │   ├── p_scheduler.py
+    │   └── utils.py
     ├── optim
+    │   ├── __init__.py
     │   ├── cma
     │   │   ├── __init__.py
     │   │   ├── projection.py
     │   │   ├── riemannian.py
     │   │   └── utils.py
-    │   ├── local
-    │   │   ├── __init__.py
-    │   │   └── cg.py
-    │   └── utils
-    │       └── p_scheduler.py
+    │   └── local
+    │       ├── __init__.py
+    │       └── cg.py
     └── py.typed
 models
 ├── __init__.py
-├── api.py
 ├── cg.py
 ├── cg_pramp.py
 ├── projection.py
 ├── projection_cg.py
 ├── projection_pramp.py
 ├── riemannian.py
-├── riemannian_pramp.py
-└── utils.py
+└── riemannian_pramp.py
+scripts
+├── _utils.py
+├── bench
+│   ├── quick_energy_benchmark.py
+│   └── run_model.py
+├── cli
+│   ├── coherence_from_txt.py
+│   ├── run_cg.py
+│   ├── run_cma.py
+│   └── verify_frame.py
+└── examples
+    ├── cma_projection.py
+    └── cma_riemannian.py
 ```
 
 
