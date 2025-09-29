@@ -13,8 +13,8 @@ import yaml
 from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence, diff_coherence
 from frameopt.core.frame import Frame
-from frameopt.models.api import Problem, Result
-from frameopt.models.p_scheduler import PScheduler
+from frameopt.model.api import Problem, Result
+from frameopt.model.p_scheduler import PScheduler
 from frameopt.optim.cma import ProjectionCMA
 from frameopt.optim.cma.utils import realvec_to_frame
 
