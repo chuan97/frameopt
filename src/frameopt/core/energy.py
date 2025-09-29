@@ -18,9 +18,13 @@ from frameopt.core._types import Complex128Array, Float64Array
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP
 
-# -----------------------------------------------------------------------------#
-# Helper utilities                                                             #
-# -----------------------------------------------------------------------------#
+__all__ = [
+    "frame_potential",
+    "diff_coherence",
+    "coherence",
+    "grad_frame_potential",
+    "grad_diff_coherence",
+]
 
 
 def _absolute_inner(frame: Frame) -> Float64Array:
@@ -40,11 +44,6 @@ def _absolute_inner(frame: Frame) -> Float64Array:
     g: Float64Array = np.abs(frame.gram).astype(np.float64, copy=False)
     np.fill_diagonal(g, 0.0)
     return g
-
-
-# -----------------------------------------------------------------------------#
-# Public energy functions                                                      #
-# -----------------------------------------------------------------------------#
 
 
 def frame_potential(frame: Frame, p: float = 4.0) -> float:

@@ -7,6 +7,8 @@ from typing import Generic, ParamSpec, TypeVar
 P = ParamSpec("P")
 R = TypeVar("R")
 
+__all__ = ["CallCounter", "count_calls"]
+
 
 class CallCounter(Generic[P, R]):
     """

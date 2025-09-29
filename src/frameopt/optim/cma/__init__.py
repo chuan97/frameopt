@@ -1,5 +1,3 @@
-# cma-es subpackage
-
 from .projection import ProjectionCMA
 from .riemannian import RiemannianCMA
 

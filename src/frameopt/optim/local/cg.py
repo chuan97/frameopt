@@ -12,6 +12,8 @@ from frameopt.core._types import Complex128Array
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP, ProductCP
 
+__all__ = ["minimize"]
+
 
 def minimize(
     frame0: Frame,

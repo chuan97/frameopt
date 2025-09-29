@@ -5,6 +5,8 @@ from typing import Any, Protocol
 
 from frameopt.core.frame import Frame
 
+__all__ = ["Problem", "Result", "Model"]
+
 
 @dataclass(frozen=True, slots=True)
 class Problem:

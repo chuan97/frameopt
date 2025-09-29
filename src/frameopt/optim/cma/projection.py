@@ -14,6 +14,8 @@ from frameopt.core.frame import Frame
 
 from .utils import frame_to_realvec, realvec_to_frame
 
+__all__ = ["ProjectionCMA"]
+
 
 class ProjectionCMA:
     """

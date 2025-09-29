@@ -11,6 +11,8 @@ from typing import TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
+__all__ = ["Float64Array", "Complex128Array"]
+
 Float64Array: TypeAlias = NDArray[np.float64]
 """Shorthand for an ndarray of float64."""
 

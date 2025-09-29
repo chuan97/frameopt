@@ -8,6 +8,8 @@ import numpy as np
 
 from frameopt.core._types import Complex128Array
 
+__all__ = ["Frame"]
+
 
 class Frame:
     """

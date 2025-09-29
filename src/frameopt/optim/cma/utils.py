@@ -9,6 +9,8 @@ import numpy as np
 from frameopt.core._types import Float64Array
 from frameopt.core.frame import Frame
 
+__all__ = ["frame_to_realvec", "realvec_to_frame"]
+
 
 def frame_to_realvec(frame: Frame) -> Float64Array:
     """

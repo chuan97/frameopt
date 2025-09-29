@@ -8,6 +8,8 @@ import numpy as np
 from frameopt.core._types import Complex128Array, Float64Array
 from frameopt.core.frame import Frame
 
+__all__ = ["ProductCP", "PRODUCT_CP", "Chart"]
+
 
 @dataclass(frozen=True, slots=True)
 class ProductCP:
