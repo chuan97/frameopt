@@ -36,7 +36,7 @@ src
     │   ├── energy.py
     │   ├── frame.py
     │   └── manifold.py
-    ├── models
+    ├── model
     │   ├── __init__.py
     │   ├── api.py
     │   ├── p_scheduler.py
@@ -53,7 +53,6 @@ src
     │       └── cg.py
     └── py.typed
 models
-├── __init__.py
 ├── cg.py
 ├── cg_pramp.py
 ├── projection.py
