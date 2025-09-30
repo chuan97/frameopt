@@ -5,8 +5,6 @@
 A suite of optimization algorithms and tools for the numerical construction of maximally orthogonal frames (MOFs) in complex space, 
 in particular Grassmannian frames/optimal packings.
 
-Work in progress. 
-
 The core objects are:
 * `frameopt.core.frame.Frame`: stores a finite unit-norm frame of $n$ elements in complex space $\mathbb C^d$. The global phase of each vector is removed, so `Frame` actually stores an element of $(\mathbb C P^{d-1})^n$.
 * `frameopt.core.manifold.ProducCP`: implements operations on the product manifold of complex projective spaces, i.e. the manifold of frames as stored in `Frame`. Supported operations include: projection onto the tangent space at a point, retraction onto the manifold, and parallel transport of tangent vectors.
@@ -18,11 +16,11 @@ The available optimizers are:
 * `frameopt.core.optim.local.cg_minimize`: implements the conjugate gradient method on the product manifold of complex projective spaces. It uses [pymanopt](https://github.com/pymanopt/pymanopt) as backend.
 
 Additionally:
-* `frameopt.core.energy`: implements functions to compute the frame coherence, the frame potential and a differentiable surrogate for the coherence. These energy functions can be minimized with any of the optimizers.
-* `frameopt.bounds`: implements the Buhk-Cox, Welch, orthoplex, and Levenstein bounds for the coherence of a frame, as well as a master function `max_lower_bound` that returns the maximum applicable lower bound for each $(d, n)$ pair.
+* `frameopt.core.energy`: implements functions to compute the frame coherence, the $p$-frame potential and a differentiable surrogate for the coherence (the $p$-th root of the $p$-frame potential) [2]. These energy functions can be minimized with any of the optimizers.
+* `frameopt.bounds`: implements the Buhk-Cox, Welch, orthoplex, and Levenstein bounds for the coherence of a frame [3], as well as a master function `max_lower_bound` that returns the maximum applicable lower bound for each $(d, n)$ pair.
 * `frameopt.model`: defines an API to build custom models to construct MOFs. A model takes a `frameopt.model.api.Problem` (a pair of $(d, n)$ values indicating the dimension $d$ and the size $n$ of the desired frame) as input and outputs a `frameopt.model.api.Result`.  The `frameopt.model.api.Model` protocol is designed to facilitate the construction and automated benchmarking of custom optimization pipelines with a common interface.
 * `models/`: contains some models. For example, `models/projection_pramp.py` implements `ProjectionPRampModel`, which combines the `ProjectionCMA` optimizer with a ramp up protocol in the exponent $p$ of the differentiable surrogate for the coherence, with the goal of producing Grassmannian frames. The ramp up protocol is provided by `frameopt.model.p_scheduler.AdaptivePScheduler`.
-* `scripts/`: contains some useful scripts. In particular `scripts/bench/run_model.py` can read a set of input problems, and a model and its parameters from config files, parallel run the model on the problems, and store the results.
+* `scripts/`: contains some examples and some useful scripts. In particular `scripts/bench/run_model.py` can read a set of input problems, and a model and its parameters from config files, parallel run the model on the problems, and store the results.
 
 ## Project structure
 ```text
@@ -77,7 +75,11 @@ scripts
 
 ## References
 
-> [1] N. Hansen, The CMA Evolution Strategy: A Tutorial, arXiv:1604.00772 (2023)
+[1] N. Hansen, arXiv:1604.00772 (2023)
+
+[2] S. Roca-Jerat, J. Román-Roche, Mach. Learn.: Sci. Technol. 6 035022 (2025)
+
+[3] J. Jasper, E. J. King, D. G. Mixon, arXiv:1907.07848 (2019)
 
 
 
