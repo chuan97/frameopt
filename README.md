@@ -13,9 +13,9 @@ The core objects are:
 * `frameopt.core.manifold.chart`: implements a chart at a point, i.e. a frame, in the product manifold of complex projective spaces. The chart provides an orthonormal basis in tangent space and can thus encode and decode tangent vectors to and from real coordinates in $\mathbb R^{2n(d-1)}$, and transport these coordinates across charts. It can also transport its basis to another point to form a new chart there.
 
 The available optimizers are:
-* `frameopt.core.optim.cma.RiemannianCMA`: is an adaptation of CMA-ES to Riemannian manifolds. It interfaces classical CMA-ES with the manifold by sampling on the real space of chart coordinates for tangent vectors at the mean frame, generating candidates and a new mean by retraction, and transporting evolution paths and the covariance matrix by parallel transport.
+* `frameopt.core.optim.cma.RiemannianCMA`: is an adaptation of CMA-ES as described in Ref. [1] to Riemannian manifolds. It interfaces classical CMA-ES with the manifold by sampling on the real space of chart coordinates for tangent vectors at the mean frame, generating candidates and a new mean by retraction, and transporting evolution paths and the covariance matrix by parallel transport.
 * `frameopt.core.optim.cma.ProjectionCMA`: is a simpler implementation of CMA-ES on the product manifold of complex projective spaces by sampling in real ambient space and projecting candidates to a frame before evaluating the energy. It uses [pycma](https://github.com/CMA-ES/pycma) as backend.
-* `frameopt.core.optim.local.cg_minimize`: implements conjugate gradient on the product manifold of complex projective spaces. It uses [pymanopt](https://github.com/pymanopt/pymanopt) as backend.
+* `frameopt.core.optim.local.cg_minimize`: implements the conjugate gradient method on the product manifold of complex projective spaces. It uses [pymanopt](https://github.com/pymanopt/pymanopt) as backend.
 
 Additionally:
 * `frameopt.core.energy`: implements functions to compute the frame coherence, the frame potential and a differentiable surrogate for the coherence. These energy functions can be minimized with any of the optimizers.
@@ -74,6 +74,10 @@ scripts
     ├── cma_projection.py
     └── cma_riemannian.py
 ```
+
+## References
+
+> [1] N. Hansen, The CMA Evolution Strategy: A Tutorial, arXiv:1604.00772 (2023)
 
 
 
