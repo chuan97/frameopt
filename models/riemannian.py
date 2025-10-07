@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, diff_coherence
+from frameopt.core.energy import coherence, pnorm_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.optim.cma import RiemannianCMA
@@ -50,7 +50,7 @@ class RiemannianModel:
             sigma0=self.sigma0,
             popsize=self.popsize,
             seed=self.seed,
-            energy_fn=diff_coherence,
+            energy_fn=pnorm_coherence,
             energy_kwargs={"p": self.p},
         )
 

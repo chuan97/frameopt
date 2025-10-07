@@ -36,9 +36,6 @@ __all__ = [
 ]
 
 
-# ----------------------------- Public interface -----------------------------
-
-
 class PScheduler(Protocol):
     """Minimal interface for a p-scheduler."""
 
@@ -63,9 +60,6 @@ class PScheduler(Protocol):
             a ramp occurred.
         """
         ...
-
-
-# --------------------------- Concrete schedulers ----------------------------
 
 
 @dataclass

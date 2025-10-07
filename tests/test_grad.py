@@ -14,10 +14,12 @@ import numpy as np
 import pytest
 
 from frameopt.core.energy import (
-    diff_coherence,
     frame_potential,
-    grad_diff_coherence,
     grad_frame_potential,
+    grad_mellowmax_coherence,
+    grad_pnorm_coherence,
+    mellowmax_coherence,
+    pnorm_coherence,
 )
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP
@@ -49,22 +51,30 @@ TEST_CASES = [
         {"p": 4},
     ),
     (
-        lambda F, p=10: diff_coherence(F, p=p),
-        lambda F, p=10: grad_diff_coherence(F, p=p),
+        lambda F, p=10: pnorm_coherence(F, p=p),
+        lambda F, p=10: grad_pnorm_coherence(F, p=p),
         {"p": 10},
     ),
     (
-        lambda F, p=1000: diff_coherence(F, p=p),
-        lambda F, p=1000: grad_diff_coherence(F, p=p),
+        lambda F, p=1000: pnorm_coherence(F, p=p),
+        lambda F, p=1000: grad_pnorm_coherence(F, p=p),
         {"p": 1000},
+    ),
+    (
+        lambda F, omega=10.0: mellowmax_coherence(F, omega=omega),
+        lambda F, omega=10.0: grad_mellowmax_coherence(F, omega=omega),
+        {"omega": 10.0},
+    ),
+    (
+        lambda F, omega=500.0: mellowmax_coherence(F, omega=omega),
+        lambda F, omega=500.0: grad_mellowmax_coherence(F, omega=omega),
+        {"omega": 500.0},
     ),
 ]
 
 
 @pytest.mark.parametrize("energy_fn_raw, grad_fn_raw, kwargs", TEST_CASES)
 def test_gradient_finite_difference(energy_fn_raw, grad_fn_raw, kwargs):
-
-    # Small frame for quick CI; more sizes covered elsewhere.
     n, d = 6, 3
     rng = np.random.default_rng(123)
     F = Frame.random(n, d, rng=rng)

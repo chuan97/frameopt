@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, diff_coherence
+from frameopt.core.energy import coherence, pnorm_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.model.p_scheduler import PScheduler
@@ -81,7 +81,7 @@ class RiemannianPRampModel:
         t0 = time.perf_counter()
         for g in range(1, self.max_gen + 1):
             frames = cma.ask()
-            energies = np.array([diff_coherence(fr, p=p) for fr in frames])
+            energies = np.array([pnorm_coherence(fr, p=p) for fr in frames])
 
             idx = int(np.argmin(energies))
             gen_best_frame = frames[idx]

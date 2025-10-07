@@ -12,7 +12,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, diff_coherence, grad_diff_coherence
+from frameopt.core.energy import coherence, grad_pnorm_coherence, pnorm_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.model.p_scheduler import PScheduler
@@ -78,8 +78,8 @@ class CGPRampModel:
         for i in range(self.maxiter // self.step):
             step_best_frame = cg_minimize(
                 frame0=step_best_frame,
-                energy_fn=partial(diff_coherence, p=p),
-                grad_fn=partial(grad_diff_coherence, p=p),
+                energy_fn=partial(pnorm_coherence, p=p),
+                grad_fn=partial(grad_pnorm_coherence, p=p),
                 maxiter=self.step,
             )
             step_best_coh = coherence(step_best_frame)

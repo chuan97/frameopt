@@ -1,6 +1,6 @@
 import numpy as np
 
-from frameopt.core.energy import diff_coherence
+from frameopt.core.energy import pnorm_coherence
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP
 
@@ -42,7 +42,7 @@ def test_tell_runs_without_error():
         sigma0=0.2,
         popsize=popsize,
         seed=42,
-        energy_fn=diff_coherence,
+        energy_fn=pnorm_coherence,
         energy_kwargs={"p": 6},
     )
 
@@ -69,7 +69,7 @@ def test_run_returns_finite():
         sigma0=0.3,
         popsize=12,
         seed=7,
-        energy_fn=diff_coherence,
+        energy_fn=pnorm_coherence,
         energy_kwargs={"p": 4},
     )
 
@@ -77,7 +77,7 @@ def test_run_returns_finite():
     best_frame = algo.run(max_gen=25, tol=1e-3, log_every=0)
 
     assert isinstance(best_frame, Frame)
-    assert np.isfinite(diff_coherence(best_frame))
+    assert np.isfinite(pnorm_coherence(best_frame))
 
 
 def test_start_frame_is_used_with_small_sigma():
@@ -97,7 +97,7 @@ def test_start_frame_is_used_with_small_sigma():
         popsize=16,
         seed=1234,
         start_frame=init,
-        energy_fn=diff_coherence,
+        energy_fn=pnorm_coherence,
     )
 
     pop = algo.ask()
@@ -124,19 +124,19 @@ def test_energy_decreases_on_run():
         sigma0=0.3,
         popsize=pop,
         seed=321,
-        energy_fn=diff_coherence,
+        energy_fn=pnorm_coherence,
         energy_kwargs={"p": 4},
     )
 
     # Generation 0: sample and evaluate once to get a baseline best
     pop0 = algo.ask()
-    E0 = [diff_coherence(fr, p=4) for fr in pop0]
+    E0 = [pnorm_coherence(fr, p=4) for fr in pop0]
     best0 = float(np.min(E0))
     algo.tell(pop0, np.array(E0))
 
     # Run a few generations
     best_frame = algo.run(max_gen=30, tol=0.0, log_every=0)
-    best_after = float(diff_coherence(best_frame, p=4))
+    best_after = float(pnorm_coherence(best_frame, p=4))
 
     # Expect at least a small improvement (5%)
     assert best_after <= 0.95 * best0, (

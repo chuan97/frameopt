@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 
-from frameopt.core.energy import diff_coherence
+from frameopt.core.energy import pnorm_coherence
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP, Chart, ProductCP
 
@@ -244,7 +244,7 @@ class RiemannianCMABase:
         cfg: RiemannianCMAParams,
         start_frame: Frame,
         *,
-        energy_fn: Callable[[Frame], float] = diff_coherence,
+        energy_fn: Callable[[Frame], float] = pnorm_coherence,
         energy_kwargs: dict[str, Any] | None = None,
     ):
         self.cfg = cfg
@@ -506,7 +506,7 @@ class RiemannianCMA:
         popsize: int | None = None,
         seed: int | None = None,
         *,
-        energy_fn: Callable[[Frame], float] = diff_coherence,
+        energy_fn: Callable[[Frame], float] = pnorm_coherence,
         energy_kwargs: dict[str, Any] | None = None,
     ):
         if seed is None:

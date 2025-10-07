@@ -9,7 +9,7 @@ import cma.evolution_strategy as cmaes
 import numpy as np
 
 from frameopt.core._types import Float64Array
-from frameopt.core.energy import diff_coherence
+from frameopt.core.energy import pnorm_coherence
 from frameopt.core.frame import Frame
 
 from .utils import frame_to_realvec, realvec_to_frame
@@ -40,7 +40,7 @@ class ProjectionCMA:
         popsize: int | None = None,
         seed: int | None = None,
         *,
-        energy_fn: Callable[..., float] = diff_coherence,
+        energy_fn: Callable[..., float] = pnorm_coherence,
         energy_kwargs: dict[str, Any] | None = None,
     ) -> None:
         """

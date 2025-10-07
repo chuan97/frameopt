@@ -3,10 +3,10 @@ import time
 import numpy as np
 
 from frameopt.core.energy import (
-    diff_coherence,
     frame_potential,
-    grad_diff_coherence,
     grad_frame_potential,
+    grad_pnorm_coherence,
+    pnorm_coherence,
 )
 from frameopt.core.frame import Frame
 
@@ -27,8 +27,8 @@ def main():
     results = [
         ("Frame potential", timed(frame_potential, F)),
         ("Grad FP", timed(grad_frame_potential, F)),
-        ("Diff. coherence", timed(diff_coherence, F)),
-        ("Grad DC", timed(grad_diff_coherence, F)),
+        ("p norm coherence", timed(pnorm_coherence, F)),
+        ("Grad DC", timed(grad_pnorm_coherence, F)),
     ]
 
     print("=== Quick Benchmark (ms per call) ===")
