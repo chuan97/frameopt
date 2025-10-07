@@ -148,7 +148,7 @@ def mellowmax_coherence(frame: Frame, omega: float = 10.0) -> float:
     frame : :class:`Frame`
         Input frame.
     omega : float, optional
-        Temperature parameter (default 100.0). Larger values concentrate the
+        Temperature parameter (default 10.0). Larger values concentrate the
         objective around the largest overlap. Must be non‑negative.
 
     Raises
