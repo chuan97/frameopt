@@ -43,7 +43,6 @@ def test_tell_runs_without_error():
         popsize=popsize,
         seed=42,
         energy_fn=pnorm_coherence,
-        energy_kwargs={"p": 6},
     )
 
     population = algo.ask()
@@ -70,7 +69,6 @@ def test_run_returns_finite():
         popsize=12,
         seed=7,
         energy_fn=pnorm_coherence,
-        energy_kwargs={"p": 4},
     )
 
     # run a few generations with a loose tolerance
@@ -125,7 +123,6 @@ def test_energy_decreases_on_run():
         popsize=pop,
         seed=321,
         energy_fn=pnorm_coherence,
-        energy_kwargs={"p": 4},
     )
 
     # Generation 0: sample and evaluate once to get a baseline best

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -50,8 +51,7 @@ class ProjectionModel:
             sigma0=self.sigma0,
             popsize=self.popsize,
             seed=self.seed,
-            energy_fn=pnorm_coherence,
-            energy_kwargs={"p": self.p},
+            energy_fn=partial(pnorm_coherence, p=self.p),
         )
 
         best_frame = Frame.random(problem.n, problem.d)

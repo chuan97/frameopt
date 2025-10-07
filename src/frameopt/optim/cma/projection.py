@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Sequence
-from functools import partial
 from typing import Any
 
 import cma.evolution_strategy as cmaes
@@ -40,14 +39,9 @@ class ProjectionCMA:
         popsize: int | None = None,
         seed: int | None = None,
         *,
-        energy_fn: Callable[..., float] = pnorm_coherence,
-        energy_kwargs: dict[str, Any] | None = None,
+        energy_fn: Callable[[Frame], float] = pnorm_coherence,
     ) -> None:
         """
-        energy_kwargs :
-            Extra keyword arguments forwarded to *energy_fn* via
-            :pyfunc:`functools.partial`.
-
         Parameters
         ----------
         seed :
@@ -74,10 +68,7 @@ class ProjectionCMA:
 
         cma_opts["verb_disp"] = 0
 
-        # Final energy callable expects exactly one Frame positional arg.
-        self.energy_fn: Callable[[Frame], float] = partial(
-            energy_fn, **(energy_kwargs or {})
-        )
+        self.energy_fn = energy_fn
 
         if start_frame is not None:
             if start_frame.shape != (n, d):

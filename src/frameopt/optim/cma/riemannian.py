@@ -12,8 +12,6 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
-from typing import Any
 
 import numpy as np
 
@@ -245,11 +243,10 @@ class RiemannianCMABase:
         start_frame: Frame,
         *,
         energy_fn: Callable[[Frame], float] = pnorm_coherence,
-        energy_kwargs: dict[str, Any] | None = None,
     ):
         self.cfg = cfg
         self.rng = np.random.default_rng(cfg.base.seed)
-        self.energy_fn = partial(energy_fn, **(energy_kwargs or {}))
+        self.energy_fn = energy_fn
         self.state = RiemannianCMAState(
             X=start_frame.copy(),
             chart=Chart.at(start_frame, geom=self.geom),
@@ -507,7 +504,6 @@ class RiemannianCMA:
         seed: int | None = None,
         *,
         energy_fn: Callable[[Frame], float] = pnorm_coherence,
-        energy_kwargs: dict[str, Any] | None = None,
     ):
         if seed is None:
             seed = int(np.random.SeedSequence().generate_state(1)[0])
@@ -530,9 +526,7 @@ class RiemannianCMA:
         )
         params = RiemannianCMAParams(base=base, geom=geom)
 
-        self.impl = RiemannianCMABase(
-            params, X0, energy_fn=energy_fn, energy_kwargs=energy_kwargs
-        )
+        self.impl = RiemannianCMABase(params, X0, energy_fn=energy_fn)
 
     @property
     def k(self) -> int:

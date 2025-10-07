@@ -12,9 +12,7 @@ def test_ask_returns_correct_population():
     each with unit-norm vectors of shape (n, d).
     """
     n, d, popsize = 7, 4, 12
-    algo = ProjectionCMA(
-        n=n, d=d, sigma0=0.5, popsize=popsize, seed=123, energy_kwargs={"p": 4}
-    )
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.5, popsize=popsize, seed=123)
     raws = algo.ask()
     pop = [realvec_to_frame(x, n, d) for x in raws]
     # Check type and length
@@ -37,9 +35,7 @@ def test_tell_allows_reinjection_and_continued_optimization():
     """
     n, d, popsize = 6, 3, 8
     # Use a simple energy proxy via energy_kwargs
-    algo = ProjectionCMA(
-        n=n, d=d, sigma0=0.3, popsize=popsize, seed=42, energy_kwargs={"p": 6}
-    )
+    algo = ProjectionCMA(n=n, d=d, sigma0=0.3, popsize=popsize, seed=42)
     # Sample a population
     population = algo.ask()
     # Provide dummy energies (e.g., all ones)
