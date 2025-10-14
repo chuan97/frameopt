@@ -1,0 +1,9 @@
+import: models.projection:ProjectionModel
+init:
+  sigma0: 0.3
+  max_gen: 2000
+  seed: 42
+  energy:
+    import: frameopt.core.energy:pnormmax_coherence
+    kwargs:
+      p: 20

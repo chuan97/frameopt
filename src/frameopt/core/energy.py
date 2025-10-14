@@ -12,10 +12,10 @@ from frameopt.core.manifold import PRODUCT_CP
 
 __all__ = [
     "frame_potential",
-    "pnorm_coherence",
+    "pnormmax_coherence",
     "coherence",
     "grad_frame_potential",
-    "grad_pnorm_coherence",
+    "grad_pnormmax_coherence",
     "mellowmax_coherence",
     "grad_mellowmax_coherence",
 ]
@@ -71,7 +71,7 @@ def frame_potential(frame: Frame, p: float = 4.0) -> float:
     return float(aij[iu].sum())
 
 
-def pnorm_coherence(frame: Frame, p: float = 16.0) -> float:
+def pnormmax_coherence(frame: Frame, p: float = 16.0) -> float:
     """
     p norm surrogate for frame coherence.
 
@@ -228,11 +228,11 @@ def grad_frame_potential(frame: Frame, p: float = 4.0) -> Complex128Array:
     return PRODUCT_CP.project_to_tangent(frame, grad)
 
 
-def grad_pnorm_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
+def grad_pnormmax_coherence(frame: Frame, p: float = 16.0) -> Complex128Array:
     """
     Gradient of the p-norm coherence surrogate L_p(F) on (CP^{d−1})ⁿ.
 
-    Uses the same G⋆-factoring as :func:`pnorm_coherence` to avoid underflow.
+    Uses the same G⋆-factoring as :func:`pnormmax_coherence` to avoid underflow.
 
     Parameters
     ----------

@@ -1,0 +1,12 @@
+import: models.cg:CGModel
+init:
+  maxiter: 15000
+  seed: 42
+  energy:
+    import: frameopt.core.energy:pnormmax_coherence
+    kwargs:
+      p: 20
+  grad:
+    import: frameopt.core.energy:grad_pnormmax_coherence
+    kwargs:
+      p: 20

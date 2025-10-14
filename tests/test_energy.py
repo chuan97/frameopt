@@ -5,7 +5,7 @@ from frameopt.core.energy import (
     coherence,
     frame_potential,
     mellowmax_coherence,
-    pnorm_coherence,
+    pnormmax_coherence,
 )
 from frameopt.core.frame import Frame
 
@@ -44,36 +44,36 @@ def test_frame_potential_orthonormal(orthonormal_frame: Frame) -> None:
 
 
 def test_coherence_vs_pnorm(random_frame: Frame) -> None:
-    """pnorm_coherence(p) ≥ true coherence."""
+    """pnormmax_coherence(p) ≥ true coherence."""
     mu = coherence(random_frame)
-    mu_pnorm = pnorm_coherence(random_frame, p=64)
+    mu_pnorm = pnormmax_coherence(random_frame, p=64)
     assert mu_pnorm >= mu
 
 
-def test_pnorm_coherence_monotone(random_frame: Frame) -> None:
-    """pnorm_coherence should be non-increasing as p grows."""
+def test_pnormmax_coherence_monotone(random_frame: Frame) -> None:
+    """pnormmax_coherence should be non-increasing as p grows."""
     ps = [2, 4, 8, 16, 32, 64]
-    vals = [pnorm_coherence(random_frame, p=p) for p in ps]
+    vals = [pnormmax_coherence(random_frame, p=p) for p in ps]
     # Monotonic non-increasing
     assert all(vals[i] >= vals[i + 1] for i in range(len(vals) - 1))
     # Final value still above (or equal to) true coherence
     assert vals[-1] >= coherence(random_frame) - 1e-12
 
 
-def test_pnorm_coherence_high_p_no_underflow(random_frame: Frame) -> None:
+def test_pnormmax_coherence_high_p_no_underflow(random_frame: Frame) -> None:
     """For very large p the surrogate should approach coherence without underflow."""
     p = 2000
-    val = pnorm_coherence(random_frame, p=p)
+    val = pnormmax_coherence(random_frame, p=p)
     mu = coherence(random_frame)
     assert val > 0.0
     # Within 0.1% relative error of true coherence
     assert abs(val - mu) / mu < 1e-3
 
 
-def test_pnorm_coherence_multiple_maxima(degenerate_frame: Frame) -> None:
+def test_pnormmax_coherence_multiple_maxima(degenerate_frame: Frame) -> None:
     """
     When several pairs attain the maximum inner product (duplicates),
-    pnorm_coherence should remain stable and approach that maximum for large p.
+    pnormmax_coherence should remain stable and approach that maximum for large p.
     """
     frame = degenerate_frame
 
@@ -85,10 +85,10 @@ def test_pnorm_coherence_multiple_maxima(degenerate_frame: Frame) -> None:
     # Exact expected value under current definition:
     # Φ_p = sum_{i≠j} |g_ij|^{2p} = m*(m-1) for m identical
     # columns (counts both (i,j),(j,i))
-    # Here m=3 ⇒ Φ_p = 3*2 = 6 → pnorm_coherence = 6^{1/(2p)}.
+    # Here m=3 ⇒ Φ_p = 3*2 = 6 → pnormmax_coherence = 6^{1/(2p)}.
     p = 2000
     expected = 6 ** (1.0 / (2 * p))
-    val = pnorm_coherence(frame, p=p)
+    val = pnormmax_coherence(frame, p=p)
     assert val > 0.0
     # Check against closed-form and allow small numerical drift
     assert abs(val - expected) < 1e-10

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import importlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import yaml
 
-from frameopt.core.energy import coherence, grad_pnorm_coherence, pnorm_coherence
+from frameopt.core.energy import coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.optim.local import cg_minimize
@@ -16,16 +19,33 @@ from frameopt.optim.local import cg_minimize
 
 @dataclass(frozen=True, slots=True)
 class CGModel:
-    p: int = 4
+    energy_func: Callable[[Frame], float]
+    grad_func: Callable[[Frame], Any]
     maxiter: int = 100
     seed: int | None = None
 
     @classmethod
     def from_config(cls, path: Path) -> CGModel:
-        config = yaml.safe_load(path.read_text())
-        init_dict = config["init"]
+        cfg = yaml.safe_load(path.read_text())
+        init = cfg["init"]
 
-        return cls(**init_dict)
+        ecfg = init.pop("energy")
+        mod_name, _, func_name = ecfg["import"].partition(":")
+        mod = importlib.import_module(mod_name)
+        energy_func = getattr(mod, func_name)
+        energy_func = partial(energy_func, **ecfg["kwargs"])
+
+        init["energy_func"] = energy_func
+
+        gcfg = init.pop("grad")
+        mod_name, _, func_name = gcfg["import"].partition(":")
+        mod = importlib.import_module(mod_name)
+        grad_func = getattr(mod, func_name)
+        grad_func = partial(grad_func, **ecfg["kwargs"])
+
+        init["grad_func"] = grad_func
+
+        return cls(**init)
 
     def run(self, problem: Problem) -> Result:
         if problem.n <= problem.d:
@@ -45,8 +65,8 @@ class CGModel:
         t0 = time.perf_counter()
         best_frame = cg_minimize(
             frame0=start_frame,
-            energy_fn=partial(pnorm_coherence, p=self.p),
-            grad_fn=partial(grad_pnorm_coherence, p=self.p),
+            energy_fn=self.energy_func,
+            grad_fn=self.grad_func,
             maxiter=self.maxiter,
         )
         dt = time.perf_counter() - t0

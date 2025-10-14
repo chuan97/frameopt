@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from frameopt.core.energy import pnorm_coherence
+from frameopt.core.energy import pnormmax_coherence
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP, Chart, ProductCP
 
@@ -242,7 +242,7 @@ class RiemannianCMABase:
         cfg: RiemannianCMAParams,
         start_frame: Frame,
         *,
-        energy_fn: Callable[[Frame], float] = pnorm_coherence,
+        energy_fn: Callable[[Frame], float] = pnormmax_coherence,
     ):
         self.cfg = cfg
         self.rng = np.random.default_rng(cfg.base.seed)
@@ -503,7 +503,7 @@ class RiemannianCMA:
         popsize: int | None = None,
         seed: int | None = None,
         *,
-        energy_fn: Callable[[Frame], float] = pnorm_coherence,
+        energy_fn: Callable[[Frame], float] = pnormmax_coherence,
     ):
         if seed is None:
             seed = int(np.random.SeedSequence().generate_state(1)[0])

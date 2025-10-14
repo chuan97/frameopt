@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, pnorm_coherence
+from frameopt.core.energy import coherence, pnormmax_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.model.p_scheduler import PScheduler
@@ -83,7 +83,7 @@ class ProjectionPRampModel:
         for g in range(1, self.max_gen + 1):
             raws = cma.ask()
             frames = [realvec_to_frame(x, problem.n, problem.d) for x in raws]
-            energies = [pnorm_coherence(fr, p=p) for fr in frames]
+            energies = [pnormmax_coherence(fr, p=p) for fr in frames]
 
             idx = int(np.argmin(energies))
             gen_best_frame = frames[idx]

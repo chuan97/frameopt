@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from projection_pramp import ProjectionPRampModel
 
-from frameopt.core.energy import coherence, grad_pnorm_coherence, pnorm_coherence
+from frameopt.core.energy import coherence, grad_pnormmax_coherence, pnormmax_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.optim.local import cg_minimize
@@ -48,8 +48,8 @@ class ProjectionCGModel:
         result = self.pmodel.run(problem)
         best_frame = cg_minimize(
             frame0=result.best_frame,
-            energy_fn=partial(pnorm_coherence, p=self.p),
-            grad_fn=partial(grad_pnorm_coherence, p=self.p),
+            energy_fn=partial(pnormmax_coherence, p=self.p),
+            grad_fn=partial(grad_pnormmax_coherence, p=self.p),
             maxiter=self.maxiter,
         )
         dt = time.perf_counter() - t0

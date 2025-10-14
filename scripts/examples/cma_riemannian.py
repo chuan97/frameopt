@@ -4,7 +4,7 @@ Example for projection‑based CMA‑ES.
 
 from functools import partial
 
-from frameopt.core.energy import coherence, pnorm_coherence
+from frameopt.core.energy import coherence, pnormmax_coherence
 from frameopt.optim.cma import RiemannianCMA
 
 N, D = 16, 4
@@ -18,7 +18,7 @@ cma = RiemannianCMA(
     D,
     sigma0=SIGMA0,
     popsize=POPSIZE,
-    energy_fn=partial(pnorm_coherence, p=2 * D),
+    energy_fn=partial(pnormmax_coherence, p=2 * D),
 )
 best = cma.run(max_gen=MAX_GEN, log_every=LOG_EVERY)
 

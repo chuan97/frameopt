@@ -1,0 +1,12 @@
+import: models.cg:CGModel
+init:
+  maxiter: 1000
+  seed: 42
+  energy:
+    import: frameopt.core.energy:mellowmax_coherence
+    kwargs:
+      omega: 20
+  grad:
+    import: frameopt.core.energy:grad_mellowmax_coherence
+    kwargs:
+      omega: 20

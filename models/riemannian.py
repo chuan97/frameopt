@@ -10,7 +10,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, pnorm_coherence
+from frameopt.core.energy import coherence, pnormmax_coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.optim.cma import RiemannianCMA
@@ -51,7 +51,7 @@ class RiemannianModel:
             sigma0=self.sigma0,
             popsize=self.popsize,
             seed=self.seed,
-            energy_fn=partial(pnorm_coherence, p=self.p),
+            energy_fn=partial(pnormmax_coherence, p=self.p),
         )
 
         best_frame = Frame.random(problem.n, problem.d)

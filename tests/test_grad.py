@@ -17,9 +17,9 @@ from frameopt.core.energy import (
     frame_potential,
     grad_frame_potential,
     grad_mellowmax_coherence,
-    grad_pnorm_coherence,
+    grad_pnormmax_coherence,
     mellowmax_coherence,
-    pnorm_coherence,
+    pnormmax_coherence,
 )
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP
@@ -51,13 +51,13 @@ TEST_CASES = [
         {"p": 4},
     ),
     (
-        lambda F, p=10: pnorm_coherence(F, p=p),
-        lambda F, p=10: grad_pnorm_coherence(F, p=p),
+        lambda F, p=10: pnormmax_coherence(F, p=p),
+        lambda F, p=10: grad_pnormmax_coherence(F, p=p),
         {"p": 10},
     ),
     (
-        lambda F, p=1000: pnorm_coherence(F, p=p),
-        lambda F, p=1000: grad_pnorm_coherence(F, p=p),
+        lambda F, p=1000: pnormmax_coherence(F, p=p),
+        lambda F, p=1000: grad_pnormmax_coherence(F, p=p),
         {"p": 1000},
     ),
     (

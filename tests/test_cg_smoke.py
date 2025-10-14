@@ -1,6 +1,6 @@
 import numpy as np
 
-from frameopt.core.energy import grad_pnorm_coherence, pnorm_coherence
+from frameopt.core.energy import grad_pnormmax_coherence, pnormmax_coherence
 from frameopt.core.frame import Frame
 from frameopt.optim.local import cg_minimize
 
@@ -8,14 +8,14 @@ from frameopt.optim.local import cg_minimize
 def test_conjgrad_smoke() -> None:
     """One-step polish should not make things worse (basic sanity)."""
     f0 = Frame.random(8, 4, rng=np.random.default_rng(0))
-    e0 = pnorm_coherence(f0, p=16)
+    e0 = pnormmax_coherence(f0, p=16)
 
     f1 = cg_minimize(
         f0,
-        energy_fn=lambda F: pnorm_coherence(F, p=16),
-        grad_fn=lambda F: grad_pnorm_coherence(F, p=16),
+        energy_fn=lambda F: pnormmax_coherence(F, p=16),
+        grad_fn=lambda F: grad_pnormmax_coherence(F, p=16),
         maxiter=5,
     )
-    e1 = pnorm_coherence(f1, p=16)
+    e1 = pnormmax_coherence(f1, p=16)
 
     assert e1 <= e0
