@@ -262,7 +262,7 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument("input", type=str, help="Path to frame (.npy or .txt)")
     ap.add_argument(
-        "--mp-dps", type=int, default=0, help="mpmath precision (0 to skip)"
+        "--mp-dps", type=int, default=80, help="mpmath precision (0 to skip)"
     )
     ap.add_argument(
         "--mp-topk",
