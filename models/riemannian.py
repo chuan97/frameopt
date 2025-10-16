@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -10,7 +12,7 @@ import numpy as np
 import yaml
 
 from frameopt.bounds import max_lower_bound
-from frameopt.core.energy import coherence, pnormmax_coherence
+from frameopt.core.energy import coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
 from frameopt.optim.cma import RiemannianCMA
@@ -18,7 +20,7 @@ from frameopt.optim.cma import RiemannianCMA
 
 @dataclass(frozen=True, slots=True)
 class RiemannianModel:
-    p: int = 2
+    energy_func: Callable[[Frame], float]
     sigma0: float = 0.3
     popsize: int | None = None
     max_gen: int = 1000
@@ -27,9 +29,17 @@ class RiemannianModel:
     @classmethod
     def from_config(cls, path: Path) -> RiemannianModel:
         config = yaml.safe_load(path.read_text())
-        init_dict = config["init"]
+        init = config["init"]
 
-        return cls(**init_dict)
+        ecfg = init.pop("energy")
+        mod_name, _, func_name = ecfg["import"].partition(":")
+        mod = importlib.import_module(mod_name)
+        energy_func = getattr(mod, func_name)
+        energy_func = partial(energy_func, **ecfg["kwargs"])
+
+        init["energy_func"] = energy_func
+
+        return cls(**init)
 
     def run(self, problem: Problem) -> Result:
         if problem.n <= problem.d:
@@ -51,7 +61,7 @@ class RiemannianModel:
             sigma0=self.sigma0,
             popsize=self.popsize,
             seed=self.seed,
-            energy_fn=partial(pnormmax_coherence, p=self.p),
+            energy_fn=self.energy_func,
         )
 
         best_frame = Frame.random(problem.n, problem.d)
