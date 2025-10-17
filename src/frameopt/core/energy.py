@@ -4,8 +4,11 @@ Energy and potential functions for frames (points in (CP^{d−1})ⁿ).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
+from frameopt.bounds import max_lower_bound
 from frameopt.core._types import Complex128Array, Float64Array
 from frameopt.core.frame import Frame
 from frameopt.core.manifold import PRODUCT_CP
@@ -13,6 +16,8 @@ from frameopt.core.manifold import PRODUCT_CP
 __all__ = [
     "frame_potential",
     "pnormmax_coherence",
+    "pnormmax_coherence_shifted",
+    "pnormmax_coherence_shifted_symmetric",
     "coherence",
     "grad_frame_potential",
     "grad_pnormmax_coherence",
@@ -112,6 +117,134 @@ def pnormmax_coherence(frame: Frame, p: float = 16.0) -> float:
     S = r.sum()
     # The p-norm surrogate
     return float(g_max * S ** (1.0 / q))
+
+
+def pnormmax_coherence_shifted(
+    frame: Frame,
+    p: float = 16.0,
+    bound_fn: Callable[[int, int], float] = max_lower_bound,
+) -> float:
+    """
+    p‑norm surrogate for *excess* coherence above a baseline bound.
+
+    Let x_{ij} = |⟨f_i, f_j⟩| for i<j and let μ_b = bound_fn(d, n) be a coherence
+    baseline (e.g., Welch or a tighter best‑known bound). We form per‑pair residues
+    r_{ij} = x_{ij} − μ_b and compute a p‑norm surrogate over the *positive* part:
+
+        L_p^{shift}(F) = ( max(r, 0) )_∞   as p → ∞
+                         ≈ r⋆ · ( ∑ (r_{ij}/r⋆)^{2p} )^{1/(2p)}
+
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Input frame.
+    bound_fn : Callable[[int, int], float]
+        Function returning a *coherence* baseline μ_b (not squared) for (d, n).
+    p : float, optional
+        Positive exponent controlling sharpness (default 16.0).
+
+    Returns
+    -------
+    float
+        Smooth proxy for the maximum *excess* overlap above the chosen bound.
+
+    Notes
+    -----
+    - This function returns 0.0 if all pairs are at or below the bound.
+    - The baseline μ_b must be provided in the same units as x_{ij} (i.e., coherence),
+      consistent with :func:`coherence` and :func:`pnormmax_coherence`.
+    """
+    if p <= 0:
+        raise ValueError("Exponent p must be positive.")
+
+    g_abs = _absolute_inner(frame)  # (n,n) non-negative with zero diagonal
+    n = g_abs.shape[0]
+    if n <= 1:
+        return 0.0
+
+    # Unique off-diagonal entries
+    iu = np.triu_indices(n, k=1)
+    x = g_abs[iu]
+
+    # Baseline coherence (same units as x)
+    n, d = frame.shape
+    mu_b = bound_fn(d, n)
+    assert 0.0 <= mu_b <= 1.0
+
+    # Clamped shifted residues
+    r = np.maximum(x - mu_b, 0.0)
+
+    # If no positive residues, the excess coherence is zero
+    r_max = float(r.max())
+    if r_max <= 0.0:
+        return 0.0
+
+    # Stable p-norm accumulation on ratios in [0,1]
+    q = 2 * p
+    ratios = r / r_max
+    S = np.sum(ratios**q)
+
+    return float(r_max * S ** (1.0 / q))
+
+
+def pnormmax_coherence_shifted_symmetric(
+    frame: Frame,
+    p: float = 16.0,
+    bound_fn: Callable[[int, int], float] = max_lower_bound,
+) -> float:
+    """
+    Symmetric (no‑clamp) variant of :func:`pnormmax_coherence_shifted`.
+
+    Forms residues r_{ij} = |⟨f_i, f_j⟩| − μ_b with μ_b = bound_fn(d, n) and computes
+    a p‑norm using the **largest absolute** deviation as the scale:
+
+        L_p^{sym}(F) = r⋆ · ( ∑ (|r_{ij}|/r⋆)^{2p} )^{1/(2p)},   r⋆ = max_{i<j} |r_{ij}|.
+
+    This treats deviations above and below the baseline equally. It is NOT recommended
+    for coherence minimization as a final objective (it can “pull up” very small overlaps),
+    but is useful for quick tests and early smoothing phases.
+
+    Parameters
+    ----------
+    frame : :class:`Frame`
+        Input frame.
+    p : float, optional
+        Positive exponent controlling sharpness (default 16.0).
+    bound_fn : Callable[[int, int], float], optional
+        Baseline coherence provider (default :func:`frameopt.bounds.max_lower_bound`).
+
+    Returns
+    -------
+    float
+        Symmetric p‑norm of deviations around the baseline, with underflow‑stable factoring.
+    """
+    if p <= 0:
+        raise ValueError("Exponent p must be positive.")
+
+    g_abs = _absolute_inner(frame)  # (n,n) non-negative with zero diagonal
+    n = g_abs.shape[0]
+    if n <= 1:
+        return 0.0
+
+    # Unique off-diagonal entries
+    iu = np.triu_indices(n, k=1)
+    x = g_abs[iu]
+
+    # Baseline coherence (same units as x)
+    n, d = frame.shape
+    mu_b = bound_fn(d, n)
+
+    # Symmetric residues and scaling by the largest absolute deviation
+    r = x - mu_b
+    scale = float(np.max(np.abs(r))) if r.size else 0.0
+    if scale == 0.0:
+        return 0.0
+
+    q = 2 * p
+    ratios = np.abs(r) / scale
+    S = np.sum(ratios**q)
+
+    return float(scale * S ** (1.0 / q))
 
 
 def coherence(frame: Frame) -> float:
