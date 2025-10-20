@@ -1,0 +1,14 @@
+import: models.projection_pramp_restart:ProjectionPRampRestartModel
+init:
+  sigma0: 0.3
+  max_gen: 120000
+  seed: 42
+  restarts: 10
+  scheduler:
+    import: frameopt.model.p_scheduler:AdaptivePScheduler
+    init:
+      p0: 4.0
+      p_max: 1.0e+15
+      window: 100
+  energy:
+    import: frameopt.core.energy:pnormmax_coherence
