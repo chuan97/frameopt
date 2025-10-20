@@ -11,4 +11,4 @@ init:
       p_max: 1.0e+9
       window: 100
   energy:
-    import: frameopt.core.energy:pnorm_coherence
+    import: frameopt.core.energy:pnormmax_coherence
