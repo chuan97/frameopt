@@ -1,0 +1,16 @@
+import: models.tr_pramp_restart:TRPRampRestartModel
+init:
+  maxiter: 15000
+  seed: 42
+  step: 20
+  restarts: 10
+  scheduler:
+    import: frameopt.model.p_scheduler:AdaptivePScheduler
+    init:
+      p0: 4.0
+      p_max: 1.0e+9
+      window: 5
+  energy:
+    import: frameopt.core.energy:pnormmax_coherence
+  grad:
+    import: frameopt.core.energy:grad_pnormmax_coherence
