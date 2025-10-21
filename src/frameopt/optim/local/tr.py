@@ -76,7 +76,6 @@ def minimize(
         # Use a symmetric FD along the retraction; project gradients back to T_x.
         # Note: this is a nonlinear approximation (RTR-FD). TR handles safeguards.
         h = 1e-8
-        gx = grad(x)
         x_f = manifold.retraction(x, h * eta)
         x_b = manifold.retraction(x, -h * eta)
         gf = grad(x_f)
