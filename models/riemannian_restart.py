@@ -15,11 +15,11 @@ from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
-from frameopt.optim.cma import ProjectionCMA
+from frameopt.optim.cma import RiemannianCMA
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectionRestartModel:
+class RiemannianRestartModel:
     energy_func: Callable[[Frame], float]
     seed: int
     sigma0: float = 0.3
@@ -28,7 +28,7 @@ class ProjectionRestartModel:
     restarts: int = 1
 
     @classmethod
-    def from_config(cls, path: Path) -> ProjectionRestartModel:
+    def from_config(cls, path: Path) -> RiemannianRestartModel:
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 
@@ -61,7 +61,7 @@ class ProjectionRestartModel:
 
         t0 = time.perf_counter()
         for _ in range(self.restarts):
-            solver = ProjectionCMA(
+            solver = RiemannianCMA(
                 n=problem.n,
                 d=problem.d,
                 sigma0=self.sigma0,
