@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 from pymanopt import Problem, function
-from pymanopt.optimizers.conjugate_gradient import ConjugateGradient
+from pymanopt.optimizers.trust_regions import TrustRegions
 
 from frameopt.core._types import Complex128Array
 from frameopt.core.frame import Frame
@@ -23,7 +23,7 @@ def minimize(
     **solver_kw: Any,
 ) -> Frame:
     """
-    Riemannian conjugate‑gradient.
+    Riemannian trust‑regions.
 
     Parameters
     ----------
@@ -36,10 +36,11 @@ def minimize(
         If the supplied gradient is Euclidean, it will be projected
         internally.
     maxiter :
-        Maximum number of CG iterations (must be positive).
+        Maximum number of trust‑regions iterations (must be positive).
     **solver_kw :
         Extra keyword arguments forwarded to
-        :class:`pymanopt.optimizers.conjugate_gradient.ConjugateGradient`.
+        :class:`pymanopt.optimizers.trust_regions.TrustRegions`.
+        Trust‑regions accepts parameters like ``miniter``, ``kappa``, ``theta``, ``rho_prime``, ``use_rand``, ``rho_regularization``, as well as generic optimizer options.
         ``verbosity`` (default 0) can be passed here.
 
     Returns
@@ -69,7 +70,26 @@ def minimize(
     def grad(x: Frame) -> np.ndarray:
         return grad_fn(x)
 
-    problem = Problem(manifold, cost=cost, riemannian_gradient=grad)
+    # --- Hessian-vector product via central finite differences of Riemannian grad ---
+    @function.numpy(manifold)  # type: ignore[misc]
+    def rhess(x: Frame, eta: np.ndarray) -> np.ndarray:
+        # Use a symmetric FD along the retraction; project gradients back to T_x.
+        # Note: this is a nonlinear approximation (RTR-FD). TR handles safeguards.
+        h = 1e-8
+        gx = grad(x)
+        x_f = manifold.retraction(x, h * eta)
+        x_b = manifold.retraction(x, -h * eta)
+        gf = grad(x_f)
+        gb = grad(x_b)
+        # Map gradients to T_x to keep the operator in the correct space.
+        Pf = manifold.to_tangent_space(x, gf)
+        Pb = manifold.to_tangent_space(x, gb)
+        hx = (Pf - Pb) / (2.0 * h)
+        return hx
+
+    problem = Problem(
+        manifold, cost=cost, riemannian_gradient=grad, riemannian_hessian=rhess
+    )
     if "max_iterations" in solver_kw:
         raise TypeError("Pass 'maxiter' positional, not in solver_kw")
 
@@ -83,7 +103,7 @@ def minimize(
     }
     solver_kw = kwargs | solver_kw
 
-    solver = ConjugateGradient(
+    solver = TrustRegions(
         max_iterations=maxiter,
         verbosity=verbosity,
         **solver_kw,
