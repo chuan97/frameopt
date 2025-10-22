@@ -6,4 +6,4 @@ init:
   energy:
     import: frameopt.core.energy:pnormmax_coherence
     kwargs:
-      omega: 20
+      p: 20
