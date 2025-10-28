@@ -83,8 +83,13 @@ def minimize(
         Pf = manifold.to_tangent_space(x, gf)
         Pb = manifold.to_tangent_space(x, gb)
         hx = (Pf - Pb) / (2.0 * h)
-        # Tikhonov-like damping to prevent tiny d_Hd -> huge alpha in tCG
-        hx = hx + 1e-6 * manifold.to_tangent_space(x, eta)
+        # Relative + absolute damping: floor d_Hd even when ||eta|| is tiny
+        lambda_rel = 1e-6
+        mu_abs = 1e-12
+        norm2 = manifold.inner_product(x, eta, eta)  # == ||eta||^2
+        hx = hx + (lambda_rel + mu_abs / (norm2 + 1e-30)) * manifold.to_tangent_space(
+            x, eta
+        )
         return hx
 
     problem = Problem(
