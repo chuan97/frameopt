@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -83,13 +84,8 @@ def minimize(
         Pf = manifold.to_tangent_space(x, gf)
         Pb = manifold.to_tangent_space(x, gb)
         hx = (Pf - Pb) / (2.0 * h)
-        # Relative + absolute damping: floor d_Hd even when ||eta|| is tiny
-        lambda_rel = 1e-6
-        mu_abs = 1e-12
-        norm2 = manifold.inner_product(x, eta, eta)  # == ||eta||^2
-        hx = hx + (lambda_rel + mu_abs / (norm2 + 1e-30)) * manifold.to_tangent_space(
-            x, eta
-        )
+        # Tikhonov-like damping to prevent tiny d_Hd -> huge alpha in tCG
+        hx = hx + 1e-6 * manifold.to_tangent_space(x, eta)
         return hx
 
     problem = Problem(
@@ -108,12 +104,28 @@ def minimize(
     }
     solver_kw = kwargs | solver_kw
 
-    solver = TrustRegions(
-        max_iterations=maxiter,
-        verbosity=verbosity,
-        **solver_kw,
-    )
-    result = solver.run(problem, initial_point=frame0)
+    try:
+        solver = TrustRegions(
+            max_iterations=maxiter,
+            verbosity=verbosity,
+            **solver_kw,
+        )
+        result = solver.run(problem, initial_point=frame0)
+    except OverflowError as e:
+        n, d = frame0.shape
+        warnings.warn(
+            f"OverflowError in TR optimization: {e} with frame (d={d}, n={n}). Retrying with randomization.",
+            category=RuntimeWarning,
+            stacklevel=2,
+        )
+        solver = TrustRegions(
+            max_iterations=maxiter,
+            use_rand=True,
+            verbosity=verbosity,
+            **solver_kw,
+        )
+        result = solver.run(problem, initial_point=frame0)
+
     sc = result.stopping_criterion
     assert sc.startswith("Terminated - max iterations reached"), sc
     final_frame: Frame = result.point
