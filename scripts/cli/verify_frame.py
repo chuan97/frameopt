@@ -217,6 +217,10 @@ def summarize_offdiag(off: np.ndarray, mu: float) -> dict[str, Any]:
     `degeneracy_at_max` count using atol=1e‑12.
     """
     q = {p: float(np.quantile(off, p)) for p in (0.5, 0.9, 0.95, 0.99)}
+    mu_rd = np.round(mu, 8)
+    off_rd = np.round(off, 8)
+    degeneracy = int(np.count_nonzero(off_rd == mu_rd))
+    distinct_overlaps = int(np.unique(off_rd).size)
     return {
         "count": int(off.size),
         "mean": float(off.mean()),
@@ -227,7 +231,8 @@ def summarize_offdiag(off: np.ndarray, mu: float) -> dict[str, Any]:
         "q95": q[0.95],
         "q99": q[0.99],
         "max": float(off.max()),
-        "degeneracy_at_max": int(np.sum(np.isclose(off, mu, rtol=0.0, atol=1e-12))),
+        "degeneracy_at_max_8dp": degeneracy,
+        "distinct_overlaps_8dp": distinct_overlaps,
     }
 
 
@@ -314,25 +319,24 @@ def main() -> None:
             mu_mp = coherence_mpmath(F, dps=args.mp_dps, top_pairs=None)
 
     # ---- Print human report ----
-    print(f"file         : {path}")
-    print(f"sha256       : {sha256_file(path)}")
-    print(f"shape (n,d)  : ({F.shape[0]}, {F.shape[1]})")
-    print(f"coherence64  : {mu64:.17g} @ pair {argmax_pair}")
-    print(f"coherence64_8dp: {mu64:.8f}")
-    print(f"second_largest: {mu2:.17g}")
+    print(f"file: {path}")
+    print(f"sha256: {sha256_file(path)}")
+    print(f"shape (d, n): ({F.shape[1]}, {F.shape[0]})")
+    print(f"coherence64     : {mu64:.17g} @ pair {argmax_pair}")
+    print(f"coherence64_8dp : {mu64:.8f}")
     if mu_mp is not None:
         mp_str = mp.nstr(mu_mp, args.mp_dps)
-        print(f"coherence_mp : {mp_str}  (dps={args.mp_dps})")
+        print(f"coherence_mp    : {mp_str}  (dps={args.mp_dps})")
         print(f"coherence_mp_8dp: {mu_mp:.8f}")
         delta = abs(mu_mp - mu64)
-        print(f"delta(mp-64) : {delta:.3e}")
+        print(f"delta(mp-64): {delta:.3e}")
     print("offdiag stats:")
     for k, v in stats.items():
-        print(f"  {k:>18s} : {v}")
+        print(f"    {k:>21s}: {v}")
     if args.report_k > 0:
         print(f"top-{args.report_k} pairs:")
         for val, (i, j) in topk:
-            print(f"  ({i:>3d},{j:>3d}) -> {val:.17g}")
+            print(f"    ({i:>3d},{j:>3d}) -> {val:.17g}")
 
     # ---- Optional JSON ----
     json_path: Path | None = None
