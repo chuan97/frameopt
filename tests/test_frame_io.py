@@ -35,7 +35,7 @@ def test_load_txt_roundtrip(tmp_path):
     # Export to txt
     filename = f"frame_{n}x{d}.txt"
     txt_path = tmp_path / filename
-    frame.export_txt(str(txt_path))
+    frame.save_txt(str(txt_path))
 
     # Load back
     loaded = Frame.load_txt(str(txt_path), n=n, d=d)
@@ -59,7 +59,7 @@ def test_npy_txt_consistency(tmp_path):
 
     # Save to .txt
     txt_path = tmp_path / "frame.txt"
-    frame.export_txt(str(txt_path))
+    frame.save_txt(str(txt_path))
 
     # Load back
     loaded_npy = Frame.load_npy(str(npy_path))

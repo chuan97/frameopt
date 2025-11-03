@@ -269,7 +269,7 @@ class Frame:
 
         return f_norm
 
-    def export_txt(self, path: str) -> None:
+    def save_txt(self, path: str) -> None:
         """
         Export this frame to a text file in the submission format:
         - First all real parts (row-major), one per line, then all imaginary parts.
