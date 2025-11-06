@@ -2,6 +2,7 @@ import: models.tr:TRModel
 init:
   maxiter: 15000
   seed: 42
+  restarts: 10
   energy:
     import: frameopt.core.energy:mellowmax_coherence
     kwargs:
