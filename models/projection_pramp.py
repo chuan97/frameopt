@@ -23,10 +23,11 @@ from frameopt.optim.cma.utils import realvec_to_frame
 class ProjectionPRampModel:
     scheduler_factory: Callable[[], PScheduler]
     energy_func: Callable[[Frame, float], float]
+    seed: int
     sigma0: float = 0.3
     popsize: int | None = None
     max_gen: int = 50_000
-    seed: int | None = None
+    restarts: int = 1
 
     @classmethod
     def from_config(cls, path: Path) -> ProjectionPRampModel:
@@ -69,52 +70,67 @@ class ProjectionPRampModel:
                 wall_time_s=0.0,
             )
 
-        scheduler = self.scheduler_factory()
-        p = scheduler.current_p()
-
         coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
-
-        cma = ProjectionCMA(
-            n=problem.n,
-            d=problem.d,
-            sigma0=self.sigma0,
-            popsize=self.popsize,
-            seed=self.seed,
-        )
-
-        best_frame = Frame.random(problem.n, problem.d)
-        best_coh = coherence(best_frame)
-
-        is_optimal = False
+        overall_best_frame = Frame.random(problem.n, problem.d)
+        overall_best_coh = coherence(overall_best_frame)
+        seed: int = self.seed
 
         t0 = time.perf_counter()
-        for g in range(1, self.max_gen + 1):
-            raws = cma.ask()
-            frames = [realvec_to_frame(x, problem.n, problem.d) for x in raws]
-            energies = [self.energy_func(fr, p) for fr in frames]
+        for _ in range(self.restarts):
+            scheduler = self.scheduler_factory()
+            p = scheduler.current_p()
 
-            idx = int(np.argmin(energies))
-            gen_best_frame = frames[idx]
-            gen_best_coh = coherence(gen_best_frame)
+            cma = ProjectionCMA(
+                n=problem.n,
+                d=problem.d,
+                sigma0=self.sigma0,
+                popsize=self.popsize,
+                seed=seed,
+            )
 
-            if gen_best_coh < best_coh:
-                best_coh = gen_best_coh
-                best_frame = gen_best_frame
+            best_frame = Frame.random(problem.n, problem.d)
+            best_coh = coherence(best_frame)
 
-            if best_coh < coh_lower_bound or math.isclose(
-                best_coh, coh_lower_bound, abs_tol=1e-9
-            ):
-                is_optimal = True
+            is_optimal = False
+
+            for g in range(1, self.max_gen + 1):
+                raws = cma.ask()
+                frames = [realvec_to_frame(x, problem.n, problem.d) for x in raws]
+                energies = [self.energy_func(fr, p) for fr in frames]
+
+                idx = int(np.argmin(energies))
+                gen_best_frame = frames[idx]
+                gen_best_coh = coherence(gen_best_frame)
+
+                if gen_best_coh < best_coh:
+                    best_coh = gen_best_coh
+                    best_frame = gen_best_frame
+
+                if best_coh < coh_lower_bound or math.isclose(
+                    best_coh, coh_lower_bound, abs_tol=1e-9
+                ):
+                    is_optimal = True
+                    break
+
+                cma.tell(raws, energies)
+                p, _ = scheduler.update(step=g, global_best_coh=best_coh)
+
+            if best_coh < overall_best_coh:
+                overall_best_coh = best_coh
+                overall_best_frame = best_frame
+
+            if is_optimal:
+                overall_best_frame = best_frame
+                overall_best_coh = best_coh
                 break
 
-            cma.tell(raws, energies)
-            p, _ = scheduler.update(step=g, global_best_coh=best_coh)
+            seed += 1
         dt = time.perf_counter() - t0
 
         return Result(
             problem=problem,
-            best_frame=best_frame,
-            best_coherence=best_coh,
+            best_frame=overall_best_frame,
+            best_coherence=overall_best_coh,
             wall_time_s=dt,
             extras={"optimal": is_optimal},
         )
