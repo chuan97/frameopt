@@ -3,6 +3,7 @@ init:
   maxiter: 15000
   seed: 42
   step: 20
+  restarts: 10
   scheduler:
     import: frameopt.model.p_scheduler:AdaptivePScheduler
     init:

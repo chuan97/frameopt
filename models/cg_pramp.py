@@ -24,9 +24,10 @@ class CGPRampModel:
     scheduler_factory: Callable[[], PScheduler]
     energy_func: Callable[[Frame, float], float]
     grad_func: Callable[[Frame, float], Any]
+    seed: int
     maxiter: int = 1000
-    seed: int | None = None
     step: int = 10
+    restarts: int = 1
 
     @classmethod
     def from_config(cls, path: Path) -> CGPRampModel:
@@ -76,53 +77,68 @@ class CGPRampModel:
                 wall_time_s=0.0,
             )
 
-        scheduler = self.scheduler_factory()
-        p = scheduler.current_p()
-
         coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
-
-        rng_gen = np.random.default_rng(self.seed)
-        step_best_frame = Frame.random(n=problem.n, d=problem.d, rng=rng_gen)
-
-        best_frame = Frame.random(problem.n, problem.d)
-        best_coh = coherence(best_frame)
-
-        is_optimal = False
+        overall_best_frame = Frame.random(problem.n, problem.d)
+        overall_best_coh = coherence(overall_best_frame)
+        seed: int = self.seed
 
         t0 = time.perf_counter()
-        for i in range(self.maxiter // self.step):
+        for _ in range(self.restarts):
+            scheduler = self.scheduler_factory()
+            p = scheduler.current_p()
 
-            def energy_fn(f: Frame, p: float = p) -> float:
-                return self.energy_func(f, p)
+            rng_gen = np.random.default_rng(seed)
+            step_best_frame = Frame.random(n=problem.n, d=problem.d, rng=rng_gen)
 
-            def grad_fn(f: Frame, p: float = p) -> Any:
-                return self.grad_func(f, p)
+            best_frame = Frame.random(problem.n, problem.d)
+            best_coh = coherence(best_frame)
 
-            step_best_frame = cg_minimize(
-                frame0=step_best_frame,
-                energy_fn=energy_fn,
-                grad_fn=grad_fn,
-                maxiter=self.step,
-            )
-            step_best_coh = coherence(step_best_frame)
+            is_optimal = False
 
-            if step_best_coh < best_coh:
-                best_coh = step_best_coh
-                best_frame = step_best_frame
+            for i in range(self.maxiter // self.step):
 
-            if best_coh < coh_lower_bound or math.isclose(
-                best_coh, coh_lower_bound, abs_tol=1e-9
-            ):
-                is_optimal = True
+                def energy_fn(f: Frame, p: float = p) -> float:
+                    return self.energy_func(f, p)
+
+                def grad_fn(f: Frame, p: float = p) -> Any:
+                    return self.grad_func(f, p)
+
+                step_best_frame = cg_minimize(
+                    frame0=step_best_frame,
+                    energy_fn=energy_fn,
+                    grad_fn=grad_fn,
+                    maxiter=self.step,
+                )
+                step_best_coh = coherence(step_best_frame)
+
+                if step_best_coh < best_coh:
+                    best_coh = step_best_coh
+                    best_frame = step_best_frame
+
+                if best_coh < coh_lower_bound or math.isclose(
+                    best_coh, coh_lower_bound, abs_tol=1e-9
+                ):
+                    is_optimal = True
+                    break
+
+                p, _ = scheduler.update(step=i, global_best_coh=best_coh)
+
+            if best_coh < overall_best_coh:
+                overall_best_coh = best_coh
+                overall_best_frame = best_frame
+
+            if is_optimal:
+                overall_best_frame = best_frame
+                overall_best_coh = best_coh
                 break
 
-            p, _ = scheduler.update(step=i, global_best_coh=best_coh)
+            seed += 1
         dt = time.perf_counter() - t0
 
         return Result(
             problem=problem,
-            best_frame=best_frame,
-            best_coherence=best_coh,
+            best_frame=overall_best_frame,
+            best_coherence=overall_best_coh,
             wall_time_s=dt,
             extras={"optimal": is_optimal},
         )
