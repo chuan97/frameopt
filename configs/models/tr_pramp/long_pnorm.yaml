@@ -1,4 +1,4 @@
-import: models.tr_pramp_restart:TRPRampRestartModel
+import: models.tr_pramp:TRPRampModel
 init:
   maxiter: 30000
   seed: 42

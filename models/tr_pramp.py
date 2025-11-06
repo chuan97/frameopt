@@ -20,7 +20,7 @@ from frameopt.optim.local import tr_minimize
 
 
 @dataclass(frozen=True, slots=True)
-class TRPRampRestartModel:
+class TRPRampModel:
     scheduler_factory: Callable[[], PScheduler]
     energy_func: Callable[[Frame, float], float]
     grad_func: Callable[[Frame, float], Any]
@@ -30,7 +30,7 @@ class TRPRampRestartModel:
     restarts: int = 1
 
     @classmethod
-    def from_config(cls, path: Path) -> TRPRampRestartModel:
+    def from_config(cls, path: Path) -> TRPRampModel:
         cfg = yaml.safe_load(path.read_text())
         init = cfg["init"]
 

@@ -1,14 +1,14 @@
-import: models.tr_pramp_restart:TRPRampRestartModel
+import: models.tr_pramp:TRPRampModel
 init:
-  maxiter: 15000
+  maxiter: 30000
   seed: 42
   step: 20
-  restarts: 10
+  restarts: 20
   scheduler:
     import: frameopt.model.p_scheduler:AdaptivePScheduler
     init:
       p0: 4.0
-      p_max: 1.0e+9
+      p_max: 1.0e+12
       window: 5
   energy:
     import: frameopt.core.energy:mellowmax_coherence
