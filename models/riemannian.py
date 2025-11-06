@@ -21,15 +21,16 @@ from frameopt.optim.cma import RiemannianCMA
 @dataclass(frozen=True, slots=True)
 class RiemannianModel:
     energy_func: Callable[[Frame], float]
+    seed: int
     sigma0: float = 0.3
     popsize: int | None = None
     max_gen: int = 1000
-    seed: int | None = None
+    restarts: int = 1
 
     @classmethod
     def from_config(cls, path: Path) -> RiemannianModel:
-        config = yaml.safe_load(path.read_text())
-        init = config["init"]
+        cfg = yaml.safe_load(path.read_text())
+        init = cfg["init"]
 
         ecfg = init.pop("energy")
         mod_name, _, func_name = ecfg["import"].partition(":")
@@ -54,41 +55,56 @@ class RiemannianModel:
             )
 
         coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
-
-        solver = RiemannianCMA(
-            n=problem.n,
-            d=problem.d,
-            sigma0=self.sigma0,
-            popsize=self.popsize,
-            seed=self.seed,
-            energy_fn=self.energy_func,
-        )
-
-        best_frame = Frame.random(problem.n, problem.d)
-        best_coh = coherence(best_frame)
-
-        is_optimal = False
+        overall_best_frame = Frame.random(problem.n, problem.d)
+        overall_best_coh = coherence(overall_best_frame)
+        seed: int = self.seed
 
         t0 = time.perf_counter()
-        for _ in range(1, self.max_gen + 1):
-            gen_best_frame, _ = solver.step()
-            gen_best_coh = coherence(gen_best_frame)
+        for _ in range(self.restarts):
+            solver = RiemannianCMA(
+                n=problem.n,
+                d=problem.d,
+                sigma0=self.sigma0,
+                popsize=self.popsize,
+                seed=seed,
+                energy_fn=self.energy_func,
+            )
 
-            if gen_best_coh < best_coh:
-                best_coh = gen_best_coh
-                best_frame = gen_best_frame
+            best_frame = Frame.random(problem.n, problem.d)
+            best_coh = coherence(best_frame)
 
-            if best_coh < coh_lower_bound or math.isclose(
-                best_coh, coh_lower_bound, abs_tol=1e-9
-            ):
-                is_optimal = True
+            is_optimal = False
+
+            for _ in range(1, self.max_gen + 1):
+                gen_best_frame, _ = solver.step()
+                gen_best_coh = coherence(gen_best_frame)
+
+                if gen_best_coh < best_coh:
+                    best_coh = gen_best_coh
+                    best_frame = gen_best_frame
+
+                if best_coh < coh_lower_bound or math.isclose(
+                    best_coh, coh_lower_bound, abs_tol=1e-9
+                ):
+                    is_optimal = True
+                    break
+
+            if best_coh < overall_best_coh:
+                overall_best_coh = best_coh
+                overall_best_frame = best_frame
+
+            if is_optimal:
+                overall_best_frame = best_frame
+                overall_best_coh = best_coh
                 break
+
+            seed += 1
         dt = time.perf_counter() - t0
 
         return Result(
             problem=problem,
-            best_frame=best_frame,
-            best_coherence=best_coh,
+            best_frame=overall_best_frame,
+            best_coherence=overall_best_coh,
             wall_time_s=dt,
             extras={"optimal": is_optimal},
         )
