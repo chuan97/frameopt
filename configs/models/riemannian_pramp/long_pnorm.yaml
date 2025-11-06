@@ -1,8 +1,9 @@
-import: models.riemannian_pramp:RiemannianPRampModel
+import: models.riemannian_pram:RiemannianPRampModel
 init:
   sigma0: 0.3
   max_gen: 80000
   seed: 42
+  restarts: 10
   scheduler:
     import: frameopt.model.p_scheduler:AdaptivePScheduler
     init:

@@ -3,6 +3,7 @@ init:
   sigma0: 0.3
   max_gen: 50000
   seed: 42
+  restarts: 10
   scheduler:
     import: frameopt.model.p_scheduler:AdaptivePScheduler
     init:
