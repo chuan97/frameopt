@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from typing import Any
 import numpy as np
 import yaml
 
+from frameopt.bounds import max_lower_bound
 from frameopt.core.energy import coherence
 from frameopt.core.frame import Frame
 from frameopt.model.api import Problem, Result
@@ -21,8 +23,9 @@ from frameopt.optim.local import cg_minimize
 class CGModel:
     energy_func: Callable[[Frame], float]
     grad_func: Callable[[Frame], Any]
+    seed: int
     maxiter: int = 100
-    seed: int | None = None
+    restarts: int = 1
 
     @classmethod
     def from_config(cls, path: Path) -> CGModel:
@@ -59,16 +62,39 @@ class CGModel:
                 wall_time_s=0.0,
             )
 
-        rng_gen = np.random.default_rng(self.seed)
-        start_frame = Frame.random(n=problem.n, d=problem.d, rng=rng_gen)
+        coh_lower_bound = max_lower_bound(d=problem.d, n=problem.n)
+        overall_best_frame = Frame.random(problem.n, problem.d)
+        overall_best_coh = coherence(overall_best_frame)
+        seed: int = self.seed
 
         t0 = time.perf_counter()
-        best_frame = cg_minimize(
-            frame0=start_frame,
-            energy_fn=self.energy_func,
-            grad_fn=self.grad_func,
-            maxiter=self.maxiter,
-        )
+        for _ in range(self.restarts):
+            rng_gen = np.random.default_rng(seed)
+            start_frame = Frame.random(n=problem.n, d=problem.d, rng=rng_gen)
+
+            is_optimal = False
+
+            best_frame = cg_minimize(
+                frame0=start_frame,
+                energy_fn=self.energy_func,
+                grad_fn=self.grad_func,
+                maxiter=self.maxiter,
+            )
+            best_coh = coherence(best_frame)
+
+            if best_coh < overall_best_coh:
+                overall_best_coh = best_coh
+                overall_best_frame = best_frame
+
+            if best_coh < coh_lower_bound or math.isclose(
+                best_coh, coh_lower_bound, abs_tol=1e-9
+            ):
+                overall_best_frame = best_frame
+                overall_best_coh = best_coh
+                is_optimal = True
+                break
+
+            seed += 1
         dt = time.perf_counter() - t0
 
         return Result(
@@ -76,4 +102,5 @@ class CGModel:
             best_frame=best_frame,
             best_coherence=coherence(best_frame),
             wall_time_s=dt,
+            extras={"optimal": is_optimal},
         )
